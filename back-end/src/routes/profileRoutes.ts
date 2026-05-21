@@ -7,7 +7,10 @@ import {
   createProfile,
   updateProfile,
   createRelationship,
-  deleteRelationship
+  deleteRelationship,
+  connectExistingByEmail,
+  getPendingRequests,
+  respondToRequest
 } from '../controllers/profileController';
 
 const router = Router();
@@ -17,6 +20,9 @@ router.use(requireAuth);
 
 router.get('/me', getMe);
 router.get('/circle', getCircle);
+router.post('/connect-email', connectExistingByEmail);
+router.get('/pending-requests', getPendingRequests);
+router.post('/pending-requests/:id/respond', respondToRequest);
 router.get('/:id', getProfileById);
 router.post('/', createProfile);
 router.put('/:id', updateProfile);

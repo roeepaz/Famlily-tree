@@ -1,5 +1,11 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { api } from '@/lib/api';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 const AuthContext = createContext();
 
@@ -39,19 +45,89 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    checkUserAuth();
+    // 1. Get initial session
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        localStorage.setItem('supabase_access_token', session.access_token);
+        checkUserAuth();
+      } else {
+        localStorage.removeItem('supabase_access_token');
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
+        setIsAuthenticated(false);
+      }
+    });
+
+    // 2. Listen for auth changes
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        localStorage.setItem('supabase_access_token', session.access_token);
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          checkUserAuth();
+        }
+      } else {
+        localStorage.removeItem('supabase_access_token');
+        setUser(null);
+        setIsAuthenticated(false);
+        setIsLoadingAuth(false);
+        setAuthChecked(true);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkAppState = async () => {};
+
+  const signUp = async (email, password, firstName, lastName, extraFields = {}) => {
+    setAuthError(null);
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          family_branch_name: extraFields.familyBranchName || null,
+          phone: extraFields.phone || null,
+          location: extraFields.location || null,
+          birth_date: extraFields.birthDate || null,
+          avatar_url: extraFields.avatarUrl || null,
+        },
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+    return data;
+  };
+
+  const signIn = async (email, password) => {
+    setAuthError(null);
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+    return data;
+  };
   
-  const logout = () => {
+  const logout = async () => {
+    await supabaseClient.auth.signOut();
     localStorage.removeItem('supabase_access_token');
     setUser(null);
     setIsAuthenticated(false);
+    setAuthError(null);
   };
   
   const navigateToLogin = () => {
-    checkUserAuth();
+    // Will be handled by Router redirects
   };
 
   return (
@@ -63,6 +139,8 @@ export const AuthProvider = ({ children }) => {
       authError,
       appPublicSettings,
       authChecked,
+      signUp,
+      signIn,
       logout,
       navigateToLogin,
       checkUserAuth,

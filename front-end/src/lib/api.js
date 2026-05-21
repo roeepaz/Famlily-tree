@@ -12,7 +12,6 @@ async function apiFetch(endpoint, options = {}) {
   
   const headers = {
     'Content-Type': 'application/json',
-    'x-user-id': localStorage.getItem('kinship_dev_user_id') || DEFAULT_DEV_USER_ID,
     ...options.headers,
   };
 
@@ -20,6 +19,9 @@ async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem('supabase_access_token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    // Only send dev header if not authenticated with Supabase
+    headers['x-user-id'] = localStorage.getItem('kinship_dev_user_id') || DEFAULT_DEV_USER_ID;
   }
 
   const response = await fetch(url, {
@@ -81,5 +83,16 @@ export const api = {
   }),
   deleteHeritageEvent: (id) => apiFetch(`/heritage/${id}`, {
     method: 'DELETE',
+  }),
+
+  // Connection Requests
+  connectExistingByEmail: (email, relationshipType) => apiFetch('/profiles/connect-email', {
+    method: 'POST',
+    body: JSON.stringify({ email, relationship_type: relationshipType })
+  }),
+  getPendingRequests: () => apiFetch('/profiles/pending-requests'),
+  respondToRequest: (id, action) => apiFetch(`/profiles/pending-requests/${id}/respond`, {
+    method: 'POST',
+    body: JSON.stringify({ action })
   }),
 };

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Search, Filter, Plus, BookOpen } from "lucide-react";
+import { Search, Plus, BookOpen } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

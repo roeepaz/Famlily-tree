@@ -29,6 +29,7 @@ model Profile {
   location           String?
   birth_year         Int?
   death_year         Int?
+  is_active          Boolean          @default(false)
 
   // Relationships
   relationshipsAsPerson   Relationship[] @relation("PersonRelation")
@@ -44,6 +45,7 @@ model Relationship {
   person_id         String           @db.Uuid
   relative_id       String           @db.Uuid
   relationship_type RelationshipType
+  is_pending        Boolean          @default(false)
 
   person            Profile          @relation("PersonRelation", fields: [person_id], references: [id], onDelete: Cascade)
   relative          Profile          @relation("RelativeRelation", fields: [relative_id], references: [id], onDelete: Cascade)

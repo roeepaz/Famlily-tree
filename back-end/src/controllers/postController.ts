@@ -11,7 +11,7 @@ function mapPostToFrontend(post: any) {
     id: post.id,
     authorId: post.author_id,
     authorName: `${post.author.first_name} ${post.author.last_name}`.trim(),
-    authorAvatar: post.author.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face',
+    authorAvatar: post.author.avatar_url || '',
     authorBranch: post.author.family_branch_name || 'Family Branch',
     type: 'daily', // Default post type
     timestamp: post.created_at.toISOString(),

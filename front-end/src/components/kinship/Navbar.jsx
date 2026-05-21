@@ -1,7 +1,7 @@
 import React from "react";
-import { TreePine, Heart } from "lucide-react";
+import { TreePine, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { CURRENT_USER } from "@/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
 
 const TABS = [
   { id: "hub", label: "Family Hub" },
@@ -9,7 +9,9 @@ const TABS = [
   { id: "vault", label: "Heritage Vault" },
 ];
 
-export default function Navbar({ activeTab, onTabChange }) {
+export default function Navbar({ activeTab, onTabChange, onProfileClick }) {
+  const { user, logout } = useAuth();
+
   return (
     <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-xl border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -43,14 +45,29 @@ export default function Navbar({ activeTab, onTabChange }) {
 
           {/* User */}
           <div className="flex items-center gap-3">
-            <div className="hidden md:flex flex-col items-end">
-              <span className="text-sm font-medium text-foreground">{CURRENT_USER.name}</span>
-              <span className="text-xs text-muted-foreground">{CURRENT_USER.branch}</span>
-            </div>
-            <Avatar className="w-9 h-9 ring-2 ring-primary/20">
-              <AvatarImage src={CURRENT_USER.avatar} alt={CURRENT_USER.name} />
-              <AvatarFallback>{CURRENT_USER.name[0]}</AvatarFallback>
-            </Avatar>
+            <button
+              onClick={onProfileClick}
+              className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none text-right"
+              title="View your profile"
+            >
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                  {user?.name || "Guest"}
+                </span>
+                <span className="text-xs text-muted-foreground">{user?.branch || "Family Branch"}</span>
+              </div>
+              <Avatar className="w-9 h-9 ring-2 ring-primary/20 hover:ring-primary/40 transition-all">
+                <AvatarImage src={user?.avatar} alt={user?.name} />
+                <AvatarFallback>{user?.name ? user.name[0] : "?"}</AvatarFallback>
+              </Avatar>
+            </button>
+            <button
+              onClick={logout}
+              title="Log out"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+            >
+              <LogOut className="w-4.5 h-4.5" />
+            </button>
           </div>
         </div>
 

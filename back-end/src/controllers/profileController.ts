@@ -11,7 +11,7 @@ function mapProfileToFrontend(p: any, relationLabel?: string, genLabel?: string)
   return {
     id: p.id,
     name: `${p.first_name} ${p.last_name}`.trim(),
-    avatar: p.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop&crop=face',
+    avatar: p.avatar_url || '',
     branch: p.family_branch_name || 'Family Branch',
     location: p.location || '',
     email: p.email || '',
@@ -326,6 +326,200 @@ export async function deleteRelationship(req: AuthenticatedRequest, res: Respons
     res.json({ message: 'Relationship deleted successfully' });
   } catch (error) {
     console.error('Error in deleteRelationship:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+export async function connectExistingByEmail(req: AuthenticatedRequest, res: Promise<any> | any): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { email, relationship_type } = req.body;
+    if (!email || !relationship_type) {
+      res.status(400).json({ error: 'email and relationship_type are required' });
+      return;
+    }
+
+    if (!Object.values(RelationshipType).includes(relationship_type)) {
+      res.status(400).json({ error: 'Invalid relationship type. Must be PARENT, CHILD, or SPOUSE' });
+      return;
+    }
+
+    const targetEmail = email.trim().toLowerCase();
+    
+    // Check if target user profile exists
+    const targetProfile = await prisma.profile.findUnique({
+      where: { email: targetEmail }
+    });
+
+    let relation;
+
+    if (targetProfile) {
+      if (targetProfile.id === user.id) {
+        res.status(400).json({ error: 'You cannot create a connection request to yourself.' });
+        return;
+      }
+
+      // Check if relationship already exists
+      const existingRel = await prisma.relationship.findFirst({
+        where: {
+          OR: [
+            { person_id: user.id, relative_id: targetProfile.id },
+            { person_id: targetProfile.id, relative_id: user.id }
+          ]
+        }
+      });
+
+      if (existingRel) {
+        res.status(400).json({ error: 'A relationship connection already exists with this user.' });
+        return;
+      }
+
+      // Update target profile family_branch_name to match sender's
+      await prisma.profile.update({
+        where: { id: targetProfile.id },
+        data: { family_branch_name: user.family_branch_name }
+      });
+
+      // Create a pending relationship (person_id = user, relative_id = target, is_pending = true)
+      relation = await prisma.relationship.create({
+        data: {
+          person_id: user.id,
+          relative_id: targetProfile.id,
+          relationship_type: relationship_type as RelationshipType,
+          is_pending: true
+        }
+      });
+
+      console.log(`[MOCK EMAIL] Sending connection confirmation email to ${targetEmail} from ${user.email}...`);
+
+      res.status(201).json({ 
+        success: true, 
+        pending: true, 
+        message: 'Connection request sent successfully. Waiting for confirmation.',
+        relation 
+      });
+    } else {
+      // Fallback: If target doesn't exist, create placeholder inactive profile and link immediately (active=false, relationship is_pending=false)
+      const placeholder = await prisma.profile.create({
+        data: {
+          first_name: email.split('@')[0],
+          last_name: 'Relative',
+          email: targetEmail,
+          is_active: false,
+          family_branch_name: user.family_branch_name
+        }
+      });
+
+      relation = await prisma.relationship.create({
+        data: {
+          person_id: user.id,
+          relative_id: placeholder.id,
+          relationship_type: relationship_type as RelationshipType,
+          is_pending: false
+        }
+      });
+
+      console.log(`[MOCK EMAIL] Sending invite register link to non-existent user ${targetEmail}...`);
+
+      res.status(201).json({
+        success: true,
+        pending: false,
+        message: 'Family member is not on Kinship yet. Created a placeholder node in your tree and sent an invitation email.',
+        relation
+      });
+    }
+  } catch (error) {
+    console.error('Error in connectExistingByEmail:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+export async function getPendingRequests(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Fetch incoming pending requests (where user is the relative_id and is_pending is true)
+    const requests = await prisma.relationship.findMany({
+      where: {
+        relative_id: user.id,
+        is_pending: true
+      },
+      include: {
+        person: true // The sender
+      }
+    });
+
+    const mappedRequests = requests.map(r => ({
+      id: r.id,
+      relationship_type: r.relationship_type,
+      sender: {
+        id: r.person.id,
+        name: `${r.person.first_name} ${r.person.last_name}`.trim(),
+        avatar: r.person.avatar_url || ''
+      }
+    }));
+
+    res.json(mappedRequests);
+  } catch (error) {
+    console.error('Error in getPendingRequests:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+export async function respondToRequest(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+    const { action } = req.body; // 'accept' | 'decline'
+
+    if (!id || !action || (action !== 'accept' && action !== 'decline')) {
+      res.status(400).json({ error: 'id and action ("accept" or "decline") are required' });
+      return;
+    }
+
+    // Find request, make sure it is for this user
+    const relationship = await prisma.relationship.findUnique({
+      where: { id }
+    });
+
+    if (!relationship) {
+      res.status(404).json({ error: 'Connection request not found' });
+      return;
+    }
+
+    if (relationship.relative_id !== user.id) {
+      res.status(403).json({ error: 'Forbidden: You cannot confirm a request sent to another user' });
+      return;
+    }
+
+    if (action === 'accept') {
+      await prisma.relationship.update({
+        where: { id },
+        data: { is_pending: false }
+      });
+      res.json({ success: true, message: 'Connection request accepted. Family circles fused.' });
+    } else {
+      await prisma.relationship.delete({
+        where: { id }
+      });
+      res.json({ success: true, message: 'Connection request declined.' });
+    }
+  } catch (error) {
+    console.error('Error in respondToRequest:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }

@@ -21,6 +21,7 @@ export async function getFamilyCircle(userId: string): Promise<Profile[]> {
           END AS member_id
         FROM "Relationship" r
         JOIN family_members fm ON r.person_id = fm.member_id OR r.relative_id = fm.member_id
+        WHERE r.is_pending = false
       )
       SELECT p.* 
       FROM "Profile" p
@@ -54,9 +55,10 @@ async function getFamilyCircleBFSFallback(userId: string): Promise<Profile[]> {
   while (queue.length > 0) {
     const currentId = queue.shift()!;
 
-    // Fetch all relationships involving the current user
+    // Fetch all relationships involving the current user (excluding pending)
     const relations = await prisma.relationship.findMany({
       where: {
+        is_pending: false,
         OR: [
           { person_id: currentId },
           { relative_id: currentId }
