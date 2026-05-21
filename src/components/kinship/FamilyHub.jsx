@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { Users, CalendarHeart, BookOpen } from "lucide-react";
 import ShareUpdateCard from "./ShareUpdateCard";
 import FamilyPostCard from "./FamilyPostCard";
-import { FEED_POSTS, FAMILY_MEMBERS } from "@/lib/mockData";
+import { FEED_POSTS, FAMILY_MEMBERS, CURRENT_USER } from "@/lib/mockData";
+import { toast } from "@/components/ui/use-toast";
 
 const quickStats = [
   { icon: Users, label: "Family Members", value: "14" },
@@ -11,6 +12,30 @@ const quickStats = [
 ];
 
 export default function FamilyHub() {
+  const [posts, setPosts] = useState(FEED_POSTS);
+
+  const handleSharePost = (newPostData) => {
+    const newPost = {
+      id: `post-${Date.now()}`,
+      authorId: CURRENT_USER.id,
+      authorName: CURRENT_USER.name,
+      authorAvatar: CURRENT_USER.avatar,
+      authorBranch: CURRENT_USER.branch,
+      type: newPostData.type,
+      timestamp: new Date().toISOString(),
+      content: newPostData.content,
+      image: newPostData.image,
+      reactions: [],
+      comments: [],
+    };
+
+    setPosts([newPost, ...posts]);
+    
+    toast({
+      title: "Update shared! ✨",
+      description: "Your family update has been posted to the feed.",
+    });
+  };
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -51,8 +76,8 @@ export default function FamilyHub() {
 
         {/* Main Feed */}
         <main className="lg:col-span-6 space-y-5">
-          <ShareUpdateCard />
-          {FEED_POSTS.map((post) => (
+          <ShareUpdateCard onShare={handleSharePost} />
+          {posts.map((post) => (
             <FamilyPostCard key={post.id} post={post} />
           ))}
         </main>
