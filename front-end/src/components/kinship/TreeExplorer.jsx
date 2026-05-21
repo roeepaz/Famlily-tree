@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import { CURRENT_USER, FAMILY_MEMBERS } from "@/lib/mockData";
 import RelativeNodeCard from "./RelativeNodeCard";
 import ProfileDrawer from "./ProfileDrawer";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
 
 const GENERATIONS = [
   { key: "grandparents", label: "Grandparents" },
@@ -12,11 +14,25 @@ const GENERATIONS = [
 
 export default function TreeExplorer() {
   const [selectedMember, setSelectedMember] = useState(null);
+  const { user } = useAuth();
+
+  const { data: familyCircle = [], isLoading } = useQuery({
+    queryKey: ["familyCircle"],
+    queryFn: api.getCircle,
+  });
 
   const grouped = {};
   GENERATIONS.forEach((g) => {
-    grouped[g.key] = FAMILY_MEMBERS.filter((m) => m.generation === g.key);
+    grouped[g.key] = familyCircle.filter((m) => m.generation === g.key && m.id !== user?.id);
   });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -30,7 +46,9 @@ export default function TreeExplorer() {
       <div className="space-y-10">
         {GENERATIONS.map((gen) => {
           const members = grouped[gen.key];
-          if (members.length === 0) return null;
+          const hasMembers = members.length > 0;
+          const isSiblingsRow = gen.key === "siblings" && user;
+          if (!hasMembers && !isSiblingsRow) return null;
 
           return (
             <div key={gen.key}>
@@ -42,11 +60,11 @@ export default function TreeExplorer() {
 
               {/* Insert "You" in the siblings row */}
               <div className="flex flex-wrap justify-center gap-4">
-                {gen.key === "siblings" && (
+                {gen.key === "siblings" && user && (
                   <RelativeNodeCard
-                    member={{ ...CURRENT_USER, relation: "You" }}
+                    member={{ ...user, relation: "You" }}
                     isCenter
-                    onClick={() => {}}
+                    onClick={setSelectedMember}
                   />
                 )}
                 {members.map((member) => (
