@@ -1,0 +1,75 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RelationshipType {
+  PARENT
+  CHILD
+  SPOUSE
+}
+
+model Profile {
+  id                 String           @id @default(uuid()) @db.Uuid
+  first_name         String
+  last_name          String
+  avatar_url         String?
+  birth_date         DateTime?
+  is_deceased        Boolean          @default(false)
+  family_branch_name String?          // e.g. "Smith Circle"
+  created_at         DateTime         @default(now())
+
+  // Fields to match frontend mock data structure
+  email              String?          @unique
+  phone              String?
+  location           String?
+  birth_year         Int?
+  death_year         Int?
+  is_active          Boolean          @default(false)
+
+  // Relationships
+  relationshipsAsPerson   Relationship[] @relation("PersonRelation")
+  relationshipsAsRelative Relationship[] @relation("RelativeRelation")
+  
+  // Content
+  posts              Post[]
+  heritageEvents     HeritageVault[]
+}
+
+model Relationship {
+  id                String           @id @default(uuid()) @db.Uuid
+  person_id         String           @db.Uuid
+  relative_id       String           @db.Uuid
+  relationship_type RelationshipType
+  is_pending        Boolean          @default(false)
+
+  person            Profile          @relation("PersonRelation", fields: [person_id], references: [id], onDelete: Cascade)
+  relative          Profile          @relation("RelativeRelation", fields: [relative_id], references: [id], onDelete: Cascade)
+
+  @@unique([person_id, relative_id, relationship_type])
+}
+
+model Post {
+  id         String   @id @default(uuid()) @db.Uuid
+  author_id  String   @db.Uuid
+  content    String   @db.Text
+  image_url  String?
+  created_at DateTime @default(now())
+
+  author     Profile  @relation(fields: [author_id], references: [id], onDelete: Cascade)
+}
+
+model HeritageVault {
+  id          String   @id @default(uuid()) @db.Uuid
+  title       String
+  description String   @db.Text
+  event_date  DateTime
+  created_by  String   @db.Uuid
+  media_urls  String[] // TEXT[] in PostgreSQL, represented as String[] in Prisma
+
+  creator     Profile  @relation(fields: [created_by], references: [id], onDelete: Cascade)
+}

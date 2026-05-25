@@ -3,12 +3,15 @@ import { Sun, Trophy, BookHeart, ImagePlus, Send, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CURRENT_USER, POST_TYPE_CONFIG } from "@/lib/mockData";
+import { POST_TYPE_CONFIG } from "@/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "@/components/ui/use-toast";
 
 const typeIcons = { daily: Sun, milestone: Trophy, memory: BookHeart };
 
 export default function ShareUpdateCard({ onShare }) {
+  const { user } = useAuth();
   const [selectedType, setSelectedType] = useState("daily");
   const [text, setText] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
@@ -17,19 +20,23 @@ export default function ShareUpdateCard({ onShare }) {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Clean up previous image URL if it exists to avoid leaks
-      if (selectedImage) {
-        URL.revokeObjectURL(selectedImage);
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please select an image under 2MB.",
+          variant: "destructive",
+        });
+        return;
       }
-      const url = URL.createObjectURL(file);
-      setSelectedImage(url);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   const handleRemoveImage = () => {
-    if (selectedImage) {
-      URL.revokeObjectURL(selectedImage);
-    }
     setSelectedImage(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -56,8 +63,8 @@ export default function ShareUpdateCard({ onShare }) {
     <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
       <div className="flex items-start gap-3">
         <Avatar className="w-10 h-10 mt-1">
-          <AvatarImage src={CURRENT_USER.avatar} alt={CURRENT_USER.name} />
-          <AvatarFallback>{CURRENT_USER.name[0]}</AvatarFallback>
+          <AvatarImage src={user?.avatar} alt={user?.name || "User"} />
+          <AvatarFallback>{user?.name?.[0] || "?"}</AvatarFallback>
         </Avatar>
         <div className="flex-1 space-y-3">
           <Textarea

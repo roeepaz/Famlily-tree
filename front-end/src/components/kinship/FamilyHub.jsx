@@ -1,41 +1,62 @@
-import React, { useState } from "react";
+import React from "react";
 import { Users, CalendarHeart, BookOpen } from "lucide-react";
 import ShareUpdateCard from "./ShareUpdateCard";
 import FamilyPostCard from "./FamilyPostCard";
-import { FEED_POSTS, FAMILY_MEMBERS, CURRENT_USER } from "@/lib/mockData";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
 
-const quickStats = [
-  { icon: Users, label: "Family Members", value: "14" },
-  { icon: CalendarHeart, label: "Upcoming Birthdays", value: "3" },
-  { icon: BookOpen, label: "Heritage Stories", value: "5" },
-];
-
 export default function FamilyHub() {
-  const [posts, setPosts] = useState(FEED_POSTS);
+  const queryClient = useQueryClient();
+
+  // Queries
+  const { data: posts = [], isLoading: isLoadingPosts } = useQuery({
+    queryKey: ["posts"],
+    queryFn: api.getPosts,
+  });
+
+  const { data: familyMembers = [], isLoading: isLoadingMembers } = useQuery({
+    queryKey: ["familyCircle"],
+    queryFn: api.getCircle,
+  });
+
+  const { data: heritageEvents = [] } = useQuery({
+    queryKey: ["heritageEvents"],
+    queryFn: api.getHeritageEvents,
+  });
+
+  // Mutations
+  const sharePostMutation = useMutation({
+    mutationFn: ({ content, image }) => api.createPost(content, image),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      toast({
+        title: "Update shared! ✨",
+        description: "Your family update has been posted to the feed.",
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to share update",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleSharePost = (newPostData) => {
-    const newPost = {
-      id: `post-${Date.now()}`,
-      authorId: CURRENT_USER.id,
-      authorName: CURRENT_USER.name,
-      authorAvatar: CURRENT_USER.avatar,
-      authorBranch: CURRENT_USER.branch,
-      type: newPostData.type,
-      timestamp: new Date().toISOString(),
+    sharePostMutation.mutate({
       content: newPostData.content,
       image: newPostData.image,
-      reactions: [],
-      comments: [],
-    };
-
-    setPosts([newPost, ...posts]);
-    
-    toast({
-      title: "Update shared! ✨",
-      description: "Your family update has been posted to the feed.",
     });
   };
+
+  const quickStats = [
+    { icon: Users, label: "Family Members", value: isLoadingMembers ? "..." : familyMembers.length.toString() },
+    { icon: CalendarHeart, label: "Upcoming Birthdays", value: "3" },
+    { icon: BookOpen, label: "Heritage Stories", value: heritageEvents.length.toString() },
+  ];
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -61,15 +82,21 @@ export default function FamilyHub() {
           <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
             <h3 className="font-heading text-base font-semibold text-foreground mb-3">Active Members</h3>
             <div className="space-y-2.5">
-              {FAMILY_MEMBERS.filter(m => !m.isDeceased).slice(0, 5).map((m) => (
-                <div key={m.id} className="flex items-center gap-2.5">
-                  <img src={m.avatar} alt={m.name} className="w-8 h-8 rounded-full object-cover" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-foreground truncate">{m.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{m.relation}</p>
-                  </div>
+              {isLoadingMembers ? (
+                <div className="flex justify-center py-4">
+                  <div className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                 </div>
-              ))}
+              ) : (
+                familyMembers.filter(m => !m.isDeceased).slice(0, 5).map((m) => (
+                  <div key={m.id} className="flex items-center gap-2.5">
+                    <img src={m.avatar} alt={m.name} className="w-8 h-8 rounded-full object-cover" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{m.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{m.relation}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </aside>
@@ -77,9 +104,19 @@ export default function FamilyHub() {
         {/* Main Feed */}
         <main className="lg:col-span-6 space-y-5">
           <ShareUpdateCard onShare={handleSharePost} />
-          {posts.map((post) => (
-            <FamilyPostCard key={post.id} post={post} />
-          ))}
+          {isLoadingPosts ? (
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="text-center py-10 bg-card border rounded-2xl p-5">
+              <p className="text-sm text-muted-foreground">No updates shared yet. Be the first to share one!</p>
+            </div>
+          ) : (
+            posts.map((post) => (
+              <FamilyPostCard key={post.id} post={post} />
+            ))
+          )}
         </main>
 
         {/* Right Sidebar */}

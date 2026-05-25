@@ -1,0 +1,32 @@
+import { Router } from 'express';
+import { requireAuth } from '../middleware/auth';
+import {
+  getMe,
+  getCircle,
+  getProfileById,
+  createProfile,
+  updateProfile,
+  createRelationship,
+  deleteRelationship,
+  connectExistingByEmail,
+  getPendingRequests,
+  respondToRequest
+} from '../controllers/profileController';
+
+const router = Router();
+
+// Secure all profile routes
+router.use(requireAuth);
+
+router.get('/me', getMe);
+router.get('/circle', getCircle);
+router.post('/connect-email', connectExistingByEmail);
+router.get('/pending-requests', getPendingRequests);
+router.post('/pending-requests/:id/respond', respondToRequest);
+router.get('/:id', getProfileById);
+router.post('/', createProfile);
+router.put('/:id', updateProfile);
+router.post('/relationships', createRelationship);
+router.delete('/relationships/:id', deleteRelationship);
+
+export default router;
