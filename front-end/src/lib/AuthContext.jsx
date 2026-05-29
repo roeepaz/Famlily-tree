@@ -118,6 +118,18 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
   
+  const resetPassword = async (email) => {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) throw error;
+  };
+
+  const updatePassword = async (newPassword) => {
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  };
+
   const logout = async () => {
     await supabaseClient.auth.signOut();
     localStorage.removeItem('supabase_access_token');
@@ -142,6 +154,8 @@ export const AuthProvider = ({ children }) => {
       signUp,
       signIn,
       logout,
+      resetPassword,
+      updatePassword,
       navigateToLogin,
       checkUserAuth,
       checkAppState

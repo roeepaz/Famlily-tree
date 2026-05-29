@@ -7,6 +7,7 @@ const TABS = [
   { id: "hub", label: "Family Hub" },
   { id: "tree", label: "Tree Explorer" },
   { id: "vault", label: "Heritage Vault" },
+  { id: "events", label: "Family Events" },
 ];
 
 export default function Navbar({ activeTab, onTabChange, onProfileClick }) {

@@ -1,13 +1,28 @@
 import React, { useState, useRef } from "react";
-import { X, MapPin, Mail, Phone, Calendar, Clock, ArrowRight, Plus, Camera } from "lucide-react";
+import { X, MapPin, Mail, Phone, Calendar, Clock, ArrowRight, Plus, Camera, History, UserPlus } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
+import { compressImage } from "@/lib/imageCompressor";
+
+const getActivityIcon = (type) => {
+  switch (type) {
+    case "post":
+      return <Camera className="w-3.5 h-3.5 text-primary flex-shrink-0" />;
+    case "heritage":
+      return <History className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />;
+    case "relationship":
+      return <UserPlus className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />;
+    case "joined":
+    default:
+      return <Clock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />;
+  }
+};
 
 export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }) {
   const { user, checkUserAuth } = useAuth();
@@ -17,46 +32,64 @@ export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef(null);
 
+  const { data: activities = [], isLoading: isLoadingActivity } = useQuery({
+    queryKey: ["profileActivity", member?.id],
+    queryFn: () => api.getProfileActivity(member.id),
+    enabled: !!member?.id && isOpen,
+  });
+
+  const formatActivityTime = (timestamp) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  };
+
   const isCurrentUser = user && member && user.id === member.id;
   const displayName = isCurrentUser ? user.name : (member ? member.name : "");
   const displayAvatar = isCurrentUser ? user.avatar : (member ? member.avatar : "");
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
+      if (file.size > 10 * 1024 * 1024) {
         toast({
           title: "File too large",
-          description: "Please select a photo under 2MB.",
+          description: "Please select a photo under 10MB.",
           variant: "destructive"
         });
         return;
       }
       setIsSaving(true);
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const base64Url = reader.result;
-          await api.updateProfile(user.id, { avatar_url: base64Url });
-          await checkUserAuth();
-          queryClient.invalidateQueries({ queryKey: ["familyCircle"] });
-          queryClient.invalidateQueries({ queryKey: ["posts"] });
-          toast({
-            title: "Success",
-            description: "Profile photo updated successfully."
-          });
-          setIsEditingPhoto(false);
-        } catch (err) {
-          toast({
-            title: "Error",
-            description: err.message || "Failed to update profile photo.",
-            variant: "destructive"
-          });
-        } finally {
-          setIsSaving(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImage(file, { maxWidth: 512, maxHeight: 512, quality: 0.6 });
+        await api.updateProfile(user.id, { avatar_url: compressedBase64 });
+        await checkUserAuth();
+        queryClient.invalidateQueries({ queryKey: ["familyCircle"] });
+        queryClient.invalidateQueries({ queryKey: ["posts"] });
+        toast({
+          title: "Success",
+          description: "Profile photo updated successfully."
+        });
+        setIsEditingPhoto(false);
+      } catch (err) {
+        toast({
+          title: "Error",
+          description: err.message || "Failed to update profile photo.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -271,28 +304,39 @@ export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }
                 )}
               </div>
 
-              {/* Recent Activity (placeholder) */}
+              {/* Recent Activity */}
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-3">Recent Activity</h3>
                 <div className="space-y-2">
-                  {["Shared a family photo", "Commented on a memory", "Updated their profile"].map((activity, i) => (
-                    <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-secondary/40">
-                      <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-xs text-foreground/80">{activity}</span>
+                  {isLoadingActivity ? (
+                    <div className="text-xs text-muted-foreground animate-pulse py-4 text-center bg-secondary/20 rounded-xl">
+                      Loading activities...
                     </div>
-                  ))}
+                  ) : activities.length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-4 text-center bg-secondary/20 rounded-xl">
+                      No recent activity.
+                    </div>
+                  ) : (
+                    activities.map((act) => (
+                      <div key={act.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-secondary/40">
+                        <div className="mt-0.5">
+                          {getActivityIcon(act.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs text-foreground/80 block break-words leading-relaxed">
+                            {act.description}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground block mt-0.5">
+                            {formatActivityTime(act.timestamp)}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
-                <Button 
-                  className="w-full rounded-xl gap-2 font-medium" 
-                  onClick={() => onAddRelative(member.id)}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Relative to {member.name.split(" ")[0]}
-                </Button>
-                
                 <Button className="w-full rounded-xl" variant="outline">
                   View Full Memory Timeline
                   <ArrowRight className="w-4 h-4 ml-2" />

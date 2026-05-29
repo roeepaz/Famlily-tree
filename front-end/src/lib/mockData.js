@@ -166,14 +166,15 @@ export const HERITAGE_EVENTS = [
 
 export const POST_TYPE_CONFIG = {
   daily: { label: "Daily Life", color: "bg-emerald-100 text-emerald-700", icon: "Sun" },
-  milestone: { label: "Milestone", color: "bg-amber-100 text-amber-700", icon: "Trophy" },
+  milestone: { label: "Milestone", color: "bg-teal-100 text-teal-700", icon: "Trophy" },
   memory: { label: "Family Memory", color: "bg-violet-100 text-violet-700", icon: "BookHeart" },
+  event: { label: "Event Announcement", color: "bg-rose-100 text-rose-700", icon: "Calendar" },
 };
 
 export const HERITAGE_TYPE_CONFIG = {
   memorial: { label: "Memorial", color: "bg-slate-100 text-slate-600" },
   event: { label: "Family Event", color: "bg-sky-100 text-sky-700" },
-  story: { label: "Family Story", color: "bg-amber-100 text-amber-700" },
+  story: { label: "Family Story", color: "bg-teal-100 text-teal-700" },
   milestone: { label: "Milestone", color: "bg-rose-100 text-rose-700" },
 };
 

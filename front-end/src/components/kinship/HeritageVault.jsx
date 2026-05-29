@@ -11,6 +11,7 @@ import { toast } from "@/components/ui/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { TimelineSkeleton } from "./SkeletonLoaders";
 
 export default function HeritageVault() {
   const queryClient = useQueryClient();
@@ -214,9 +215,7 @@ export default function HeritageVault() {
 
       {/* Timeline */}
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-        </div>
+        <TimelineSkeleton count={4} />
       ) : filtered.length > 0 ? (
         <div>
           {filtered.map((event, i) => (

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Sun, Trophy, BookHeart, ImagePlus, Send, X } from "lucide-react";
+import { Sun, Trophy, BookHeart, ImagePlus, Send, X, Calendar } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,8 +7,9 @@ import { POST_TYPE_CONFIG } from "@/lib/mockData";
 import { useAuth } from "@/lib/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/ui/use-toast";
+import { compressImage } from "@/lib/imageCompressor";
 
-const typeIcons = { daily: Sun, milestone: Trophy, memory: BookHeart };
+const typeIcons = { daily: Sun, milestone: Trophy, memory: BookHeart, event: Calendar };
 
 export default function ShareUpdateCard({ onShare }) {
   const { user } = useAuth();
@@ -17,22 +18,27 @@ export default function ShareUpdateCard({ onShare }) {
   const [selectedImage, setSelectedImage] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleImageChange = (e) => {
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
+      if (file.size > 10 * 1024 * 1024) {
         toast({
           title: "File too large",
-          description: "Please select an image under 2MB.",
+          description: "Please select an image under 10MB.",
           variant: "destructive",
         });
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.7 });
+        setSelectedImage(compressed);
+      } catch (err) {
+        toast({
+          title: "Compression error",
+          description: "Failed to process image.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -112,8 +118,10 @@ export default function ShareUpdateCard({ onShare }) {
           <div className="flex items-center justify-between flex-wrap gap-2">
             {/* Type Badges */}
             <div className="flex items-center gap-2">
-              {Object.entries(POST_TYPE_CONFIG).map(([key, cfg]) => {
-                const Icon = typeIcons[key];
+              {Object.entries(POST_TYPE_CONFIG)
+                .filter(([key]) => key !== "event")
+                .map(([key, cfg]) => {
+                  const Icon = typeIcons[key];
                 return (
                   <button
                     key={key}
@@ -135,7 +143,7 @@ export default function ShareUpdateCard({ onShare }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:bg-secondary/80"
+                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 border border-transparent hover:border-teal-200 dark:hover:border-teal-800 transition-all duration-200 rounded-xl"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <ImagePlus className="w-4 h-4 mr-1.5" />

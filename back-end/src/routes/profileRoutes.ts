@@ -10,7 +10,9 @@ import {
   deleteRelationship,
   connectExistingByEmail,
   getPendingRequests,
-  respondToRequest
+  respondToRequest,
+  getUpcomingBirthdays,
+  getProfileActivity
 } from '../controllers/profileController';
 
 const router = Router();
@@ -20,9 +22,11 @@ router.use(requireAuth);
 
 router.get('/me', getMe);
 router.get('/circle', getCircle);
+router.get('/upcoming-birthdays', getUpcomingBirthdays);
 router.post('/connect-email', connectExistingByEmail);
 router.get('/pending-requests', getPendingRequests);
 router.post('/pending-requests/:id/respond', respondToRequest);
+router.get('/:id/activity', getProfileActivity);
 router.get('/:id', getProfileById);
 router.post('/', createProfile);
 router.put('/:id', updateProfile);

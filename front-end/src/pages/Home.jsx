@@ -3,6 +3,7 @@ import Navbar from "@/components/kinship/Navbar";
 import FamilyHub from "@/components/kinship/FamilyHub";
 import TreeExplorer from "@/components/kinship/TreeExplorer";
 import HeritageVault from "@/components/kinship/HeritageVault";
+import FamilyEvents from "@/components/kinship/FamilyEvents";
 import ProfileDrawer from "@/components/kinship/ProfileDrawer";
 import AddRelativeModal from "@/components/kinship/AddRelativeModal";
 import { useAuth } from "@/lib/AuthContext";
@@ -12,6 +13,7 @@ const views = {
   hub: FamilyHub,
   tree: TreeExplorer,
   vault: HeritageVault,
+  events: FamilyEvents,
 };
 
 export default function Home() {
@@ -38,7 +40,7 @@ export default function Home() {
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.25 }}
         >
-          <ActiveView />
+          <ActiveView onTabChange={setActiveTab} />
         </motion.div>
       </AnimatePresence>
 

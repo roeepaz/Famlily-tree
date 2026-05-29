@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import profileRoutes from './routes/profileRoutes';
 import postRoutes from './routes/postRoutes';
 import heritageRoutes from './routes/heritageRoutes';
+import eventRoutes from './routes/eventRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +18,17 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Debug Request Logger
+app.use((req: Request, res: Response, next: NextFunction) => {
+  console.log(`[API REQUEST] ${req.method} ${req.url} - IP: ${req.ip}`);
+  const originalJson = res.json;
+  res.json = function (body) {
+    console.log(`[API RESPONSE] ${req.method} ${req.url} - Status: ${res.statusCode} - Body:`, JSON.stringify(body).slice(0, 200));
+    return originalJson.call(this, body);
+  };
+  next();
+});
 
 // Health Check Route
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -31,6 +43,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.use('/api/profiles', profileRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/heritage', heritageRoutes);
+app.use('/api/events', eventRoutes);
 
 // 404 Route handler
 app.use((_req: Request, res: Response) => {

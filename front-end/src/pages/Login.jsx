@@ -35,10 +35,10 @@ const Login = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-50 via-slate-50 to-orange-50/30 p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-teal-50 via-slate-50 to-cyan-50/30 p-4">
       {/* Visual branding/header */}
       <div className="flex flex-col items-center mb-8 text-center max-w-sm">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 shadow-md shadow-orange-500/20 mb-4 animate-pulse">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-500 to-cyan-600 shadow-md shadow-teal-500/20 mb-4 animate-pulse">
           <Heart className="w-6 h-6 text-white" />
         </div>
         <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Kinship</h1>
@@ -74,7 +74,7 @@ const Login = () => {
                 placeholder="you@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-amber-500 focus:bg-white rounded-2xl text-slate-800 text-sm outline-none transition-all duration-200"
+                className="w-full pl-12 pr-4 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-teal-500 focus:bg-white rounded-2xl text-slate-800 text-sm outline-none transition-all duration-200"
                 required
               />
             </div>
@@ -91,16 +91,24 @@ const Login = () => {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-amber-500 focus:bg-white rounded-2xl text-slate-800 text-sm outline-none transition-all duration-200"
+                className="w-full pl-12 pr-4 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-teal-500 focus:bg-white rounded-2xl text-slate-800 text-sm outline-none transition-all duration-200"
                 required
               />
             </div>
+          </div>
+          <div className="flex justify-end -mt-1">
+            <Link
+              to="/forgot-password"
+              className="text-xs font-medium text-teal-600 hover:text-teal-700 transition-colors"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:from-amber-400 disabled:to-orange-400 text-white font-semibold rounded-2xl shadow-lg shadow-orange-500/10 hover:shadow-orange-500/20 active:scale-[0.98] outline-none flex items-center justify-center gap-2 transition-all duration-200"
+            className="w-full py-3.5 px-4 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 disabled:from-teal-400 disabled:to-cyan-400 text-white font-semibold rounded-2xl shadow-lg shadow-teal-500/10 hover:shadow-teal-500/20 active:scale-[0.98] outline-none flex items-center justify-center gap-2 transition-all duration-200"
           >
             {loading ? (
               <>
@@ -118,7 +126,7 @@ const Login = () => {
             New to Kinship?{' '}
             <Link
               to="/register"
-              className="font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+              className="font-semibold text-teal-600 hover:text-teal-700 transition-colors"
             >
               Start a new tree
             </Link>

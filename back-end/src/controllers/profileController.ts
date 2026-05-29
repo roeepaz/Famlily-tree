@@ -1,8 +1,11 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/supabase';
-import { getFamilyCircle, areConnected } from '../services/familyGraph';
-import { RelationshipType } from '@prisma/client';
+import { getFamilyCircle, areConnected, calculateRelationships } from '../services/familyGraph';
+import { invalidateCircleCache } from '../services/circleCache';
+import { KinshipDesignation } from '@prisma/client';
+import { sendConnectionRequestEmail, sendInvitationEmail } from '../services/emailService';
+import { randomUUID } from 'crypto';
 
 /**
  * Helper to map DB profile to frontend representation
@@ -10,15 +13,15 @@ import { RelationshipType } from '@prisma/client';
 function mapProfileToFrontend(p: any, relationLabel?: string, genLabel?: string) {
   return {
     id: p.id,
-    name: `${p.first_name} ${p.last_name}`.trim(),
-    avatar: p.avatar_url || '',
-    branch: p.family_branch_name || 'Family Branch',
+    name: `${p.firstName} ${p.lastName}`.trim(),
+    avatar: p.avatarUrl || '',
+    branch: p.familyBranchName || 'Family Branch',
     location: p.location || '',
     email: p.email || '',
     phone: p.phone || '',
-    birthYear: p.birth_year || (p.birth_date ? new Date(p.birth_date).getFullYear() : null),
-    isDeceased: p.is_deceased,
-    deathYear: p.death_year || null,
+    birthYear: p.birthYear || (p.birthDate ? new Date(p.birthDate).getFullYear() : null),
+    isDeceased: p.isDeceased,
+    deathYear: p.deathYear || null,
     generation: genLabel || 'siblings',
     relation: relationLabel || 'Relative'
   };
@@ -52,47 +55,17 @@ export async function getCircle(req: AuthenticatedRequest, res: Response): Promi
     const circleIds = rawCircle.map(p => p.id);
     const relationships = await prisma.relationship.findMany({
       where: {
-        person_id: { in: circleIds },
-        relative_id: { in: circleIds }
+        isPending: false,
+        personId: { in: circleIds },
+        relativeId: { in: circleIds }
       }
     });
 
-    // Simple heuristic-based relationship mapper relative to logged-in user
+    const relationsMap = calculateRelationships(user.id, rawCircle, relationships);
+
     const frontendProfiles = rawCircle.map(p => {
-      if (p.id === user.id) {
-        return mapProfileToFrontend(p, 'You', 'siblings');
-      }
-
-      // Check direct relationships
-      const directRel = relationships.find(
-        r => (r.person_id === user.id && r.relative_id === p.id) ||
-             (r.relative_id === user.id && r.person_id === p.id)
-      );
-
-      if (directRel) {
-        const isUserPerson = directRel.person_id === user.id;
-        const type = directRel.relationship_type;
-
-        if (type === 'SPOUSE') {
-          return mapProfileToFrontend(p, 'Spouse', 'siblings');
-        }
-        if (type === 'PARENT') {
-          // If user is person_id and relative is parent:
-          // (Wait: person_id connects to relative_id. Let's look at schema config:
-          // parent means relative is parent, or relative is child. Let's make it intuitive)
-          const relLabel = isUserPerson ? 'Parent' : 'Child';
-          const genLabel = isUserPerson ? 'parents' : 'children';
-          return mapProfileToFrontend(p, relLabel, genLabel);
-        }
-        if (type === 'CHILD') {
-          const relLabel = isUserPerson ? 'Child' : 'Parent';
-          const genLabel = isUserPerson ? 'children' : 'parents';
-          return mapProfileToFrontend(p, relLabel, genLabel);
-        }
-      }
-
-      // Default relative labels if not direct
-      return mapProfileToFrontend(p, 'Relative', 'siblings');
+      const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
+      return mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
     });
 
     res.json(frontendProfiles);
@@ -148,7 +121,8 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       phone,
       location,
       birth_year,
-      death_year
+      death_year,
+      treeId
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -156,20 +130,30 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
+    let finalTreeId = treeId;
+    if (!finalTreeId) {
+      const tree = await prisma.familyTree.create({
+        data: { name: `${first_name}'s Family` }
+      });
+      finalTreeId = tree.id;
+    }
+
     const newProfile = await prisma.profile.create({
       data: {
         id, // Optional, can be supplied from Supabase Auth ID
-        first_name,
-        last_name,
-        avatar_url,
-        birth_date: birth_date ? new Date(birth_date) : null,
-        is_deceased: !!is_deceased,
-        family_branch_name,
+        firstName: first_name,
+        lastName: last_name,
+        avatarUrl: avatar_url,
+        birthDate: birth_date ? new Date(birth_date) : null,
+        isDeceased: !!is_deceased,
+        familyBranchName: family_branch_name,
         email,
         phone,
         location,
-        birth_year: birth_year ? parseInt(birth_year, 10) : null,
-        death_year: death_year ? parseInt(death_year, 10) : null
+        birthYear: birth_year ? parseInt(birth_year, 10) : (birth_date ? new Date(birth_date).getFullYear() : null),
+        deathYear: death_year ? parseInt(death_year, 10) : null,
+        isActive: true,
+        treeId: finalTreeId
       }
     });
 
@@ -218,17 +202,17 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
     const updatedProfile = await prisma.profile.update({
       where: { id },
       data: {
-        first_name,
-        last_name,
-        avatar_url,
-        birth_date: birth_date ? new Date(birth_date) : undefined,
-        is_deceased: is_deceased !== undefined ? !!is_deceased : undefined,
-        family_branch_name,
+        firstName: first_name,
+        lastName: last_name,
+        avatarUrl: avatar_url,
+        birthDate: birth_date ? new Date(birth_date) : undefined,
+        isDeceased: is_deceased !== undefined ? !!is_deceased : undefined,
+        familyBranchName: family_branch_name,
         email,
         phone,
         location,
-        birth_year: birth_year !== undefined ? parseInt(birth_year, 10) : undefined,
-        death_year: death_year !== undefined ? parseInt(death_year, 10) : undefined
+        birthYear: birth_year !== undefined ? parseInt(birth_year, 10) : (birth_date ? new Date(birth_date).getFullYear() : undefined),
+        deathYear: death_year !== undefined ? parseInt(death_year, 10) : undefined
       }
     });
 
@@ -255,7 +239,7 @@ export async function createRelationship(req: AuthenticatedRequest, res: Respons
     }
 
     // Verify that the relationship type matches the Prisma enum
-    if (!Object.values(RelationshipType).includes(relationship_type)) {
+    if (!Object.values(KinshipDesignation).includes(relationship_type)) {
       res.status(400).json({ error: 'Invalid relationship type. Must be PARENT, CHILD, or SPOUSE' });
       return;
     }
@@ -272,19 +256,22 @@ export async function createRelationship(req: AuthenticatedRequest, res: Respons
 
     const relation = await prisma.relationship.upsert({
       where: {
-        person_id_relative_id_relationship_type: {
-          person_id,
-          relative_id,
-          relationship_type
+        unique_adjacency_constraint: {
+          personId: person_id,
+          relativeId: relative_id,
+          kinshipType: relationship_type as KinshipDesignation
         }
       },
       update: {},
       create: {
-        person_id,
-        relative_id,
-        relationship_type
+        personId: person_id,
+        relativeId: relative_id,
+        kinshipType: relationship_type as KinshipDesignation
       }
     });
+
+    // Invalidate circle cache for both affected users
+    invalidateCircleCache(person_id, relative_id, user.id);
 
     res.status(201).json(relation);
   } catch (error) {
@@ -313,7 +300,7 @@ export async function deleteRelationship(req: AuthenticatedRequest, res: Respons
     }
 
     // Verify user is connected to both ends of the relation
-    const connected = await areConnected(user.id, relationship.person_id);
+    const connected = await areConnected(user.id, relationship.personId);
     if (!connected) {
       res.status(403).json({ error: 'Forbidden: You do not share a structural family link with these profiles' });
       return;
@@ -322,6 +309,9 @@ export async function deleteRelationship(req: AuthenticatedRequest, res: Respons
     await prisma.relationship.delete({
       where: { id }
     });
+
+    // Invalidate cache for both ends of the relationship
+    invalidateCircleCache(relationship.personId, relationship.relativeId, user.id);
 
     res.json({ message: 'Relationship deleted successfully' });
   } catch (error) {
@@ -344,7 +334,7 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
       return;
     }
 
-    if (!Object.values(RelationshipType).includes(relationship_type)) {
+    if (!Object.values(KinshipDesignation).includes(relationship_type)) {
       res.status(400).json({ error: 'Invalid relationship type. Must be PARENT, CHILD, or SPOUSE' });
       return;
     }
@@ -368,34 +358,40 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
       const existingRel = await prisma.relationship.findFirst({
         where: {
           OR: [
-            { person_id: user.id, relative_id: targetProfile.id },
-            { person_id: targetProfile.id, relative_id: user.id }
+            { personId: user.id, relativeId: targetProfile.id },
+            { personId: targetProfile.id, relativeId: user.id }
           ]
         }
       });
 
       if (existingRel) {
-        res.status(400).json({ error: 'A relationship connection already exists with this user.' });
+        if (existingRel.isPending) {
+          res.status(400).json({ error: 'A relationship connection request is already pending with this user.' });
+        } else {
+          res.status(400).json({ error: 'A relationship connection already exists with this user.' });
+        }
         return;
       }
 
-      // Update target profile family_branch_name to match sender's
-      await prisma.profile.update({
-        where: { id: targetProfile.id },
-        data: { family_branch_name: user.family_branch_name }
-      });
-
-      // Create a pending relationship (person_id = user, relative_id = target, is_pending = true)
+      // Note: We do NOT merge family trees yet. The trees will be merged when the recipient accepts the request.
       relation = await prisma.relationship.create({
         data: {
-          person_id: user.id,
-          relative_id: targetProfile.id,
-          relationship_type: relationship_type as RelationshipType,
-          is_pending: true
+          personId: user.id,
+          relativeId: targetProfile.id,
+          kinshipType: relationship_type as KinshipDesignation,
+          isPending: true
         }
       });
 
-      console.log(`[MOCK EMAIL] Sending connection confirmation email to ${targetEmail} from ${user.email}...`);
+      // Send connection email asynchronously (don't block the response)
+      sendConnectionRequestEmail(
+        targetEmail,
+        `${user.firstName} ${user.lastName}`.trim(),
+        user.email || '',
+        relationship_type
+      ).catch(err => {
+        console.error(`Failed to send connection request email to ${targetEmail}:`, err);
+      });
 
       res.status(201).json({ 
         success: true, 
@@ -404,27 +400,38 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
         relation 
       });
     } else {
-      // Fallback: If target doesn't exist, create placeholder inactive profile and link immediately (active=false, relationship is_pending=false)
+      // Fallback: If target doesn't exist, create placeholder inactive profile and link immediately (active=false)
+      // Since it's a placeholder, no one has to accept it. It starts with isPending = false.
       const placeholder = await prisma.profile.create({
         data: {
-          first_name: email.split('@')[0],
-          last_name: 'Relative',
+          id: randomUUID(),
+          firstName: email.split('@')[0],
+          lastName: 'Relative',
           email: targetEmail,
-          is_active: false,
-          family_branch_name: user.family_branch_name
+          isActive: false,
+          familyBranchName: user.familyBranchName,
+          treeId: user.treeId
         }
       });
 
       relation = await prisma.relationship.create({
         data: {
-          person_id: user.id,
-          relative_id: placeholder.id,
-          relationship_type: relationship_type as RelationshipType,
-          is_pending: false
+          personId: user.id,
+          relativeId: placeholder.id,
+          kinshipType: relationship_type as KinshipDesignation,
+          isPending: false
         }
       });
 
-      console.log(`[MOCK EMAIL] Sending invite register link to non-existent user ${targetEmail}...`);
+      // Send invitation email asynchronously (don't block the response)
+      sendInvitationEmail(
+        targetEmail,
+        `${user.firstName} ${user.lastName}`.trim(),
+        user.email || '',
+        relationship_type
+      ).catch(err => {
+        console.error(`Failed to send invitation email to ${targetEmail}:`, err);
+      });
 
       res.status(201).json({
         success: true,
@@ -447,11 +454,11 @@ export async function getPendingRequests(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    // Fetch incoming pending requests (where user is the relative_id and is_pending is true)
+    // Fetch incoming pending requests (where current user is relativeId and isPending is true)
     const requests = await prisma.relationship.findMany({
       where: {
-        relative_id: user.id,
-        is_pending: true
+        relativeId: user.id,
+        isPending: true
       },
       include: {
         person: true // The sender
@@ -460,11 +467,11 @@ export async function getPendingRequests(req: AuthenticatedRequest, res: Respons
 
     const mappedRequests = requests.map(r => ({
       id: r.id,
-      relationship_type: r.relationship_type,
+      relationship_type: r.kinshipType,
       sender: {
         id: r.person.id,
-        name: `${r.person.first_name} ${r.person.last_name}`.trim(),
-        avatar: r.person.avatar_url || ''
+        name: `${r.person.firstName} ${r.person.lastName}`.trim(),
+        avatar: r.person.avatarUrl || ''
       }
     }));
 
@@ -493,7 +500,11 @@ export async function respondToRequest(req: AuthenticatedRequest, res: Response)
 
     // Find request, make sure it is for this user
     const relationship = await prisma.relationship.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        person: true,   // sender
+        relative: true  // recipient (current user)
+      }
     });
 
     if (!relationship) {
@@ -501,21 +512,59 @@ export async function respondToRequest(req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    if (relationship.relative_id !== user.id) {
+    if (relationship.relativeId !== user.id) {
       res.status(403).json({ error: 'Forbidden: You cannot confirm a request sent to another user' });
       return;
     }
 
     if (action === 'accept') {
+      // 1. Update relationship isPending to false
       await prisma.relationship.update({
         where: { id },
-        data: { is_pending: false }
+        data: { isPending: false }
       });
+
+      // 2. Merge their family trees if they are in different ones
+      const sender = relationship.person;
+      const recipient = relationship.relative;
+      if (sender.treeId && recipient.treeId && sender.treeId !== recipient.treeId) {
+        const oldTreeId = recipient.treeId;
+        const newTreeId = sender.treeId;
+
+        // Update profiles to use sender's tree
+        await prisma.profile.updateMany({
+          where: { treeId: oldTreeId },
+          data: { treeId: newTreeId }
+        });
+
+        // Update posts to use sender's tree
+        await prisma.post.updateMany({
+          where: { treeId: oldTreeId },
+          data: { treeId: newTreeId }
+        });
+
+        // Update heritage to use sender's tree
+        await prisma.heritageVault.updateMany({
+          where: { treeId: oldTreeId },
+          data: { treeId: newTreeId }
+        });
+
+        // Delete recipient's old empty tree
+        await prisma.familyTree.delete({
+          where: { id: oldTreeId }
+        });
+      }
+
+      // Invalidate both users' caches — their circles just merged
+      invalidateCircleCache(relationship.person.id, relationship.relative.id);
       res.json({ success: true, message: 'Connection request accepted. Family circles fused.' });
     } else {
+      // Decline: Delete relationship record
       await prisma.relationship.delete({
         where: { id }
       });
+      // Invalidate cache for the sender (their circle didn't change but clean up anyway)
+      invalidateCircleCache(relationship.person.id, user.id);
       res.json({ success: true, message: 'Connection request declined.' });
     }
   } catch (error) {
@@ -523,3 +572,205 @@ export async function respondToRequest(req: AuthenticatedRequest, res: Response)
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }
+
+export async function getUpcomingBirthdays(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const rawCircle = await getFamilyCircle(user.id);
+    
+    // Filter active profiles with birthDate
+    const activeWithBirthdays = rawCircle.filter(p => p.birthDate && !p.isDeceased);
+
+    if (activeWithBirthdays.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const circleIds = rawCircle.map(p => p.id);
+    const relationships = await prisma.relationship.findMany({
+      where: {
+        isPending: false,
+        personId: { in: circleIds },
+        relativeId: { in: circleIds }
+      }
+    });
+
+    const relationsMap = calculateRelationships(user.id, rawCircle, relationships);
+
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const birthdays = activeWithBirthdays.map(p => {
+      const birthDateObj = new Date(p.birthDate!);
+      const birthMonth = birthDateObj.getMonth();
+      const birthDay = birthDateObj.getDate();
+
+      // Birthday in current year
+      let nextBirthday = new Date(today.getFullYear(), birthMonth, birthDay);
+
+      // If already passed, set to next year
+      if (nextBirthday < todayZero) {
+        nextBirthday.setFullYear(today.getFullYear() + 1);
+      }
+
+      const diffTime = nextBirthday.getTime() - todayZero.getTime();
+      const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const age = nextBirthday.getFullYear() - birthDateObj.getFullYear();
+
+      const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
+
+      const baseProfile = mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
+      return {
+        ...baseProfile,
+        birthDate: p.birthDate,
+        daysUntil,
+        ageTurning: age,
+        nextBirthdayDate: nextBirthday.toISOString().split('T')[0]
+      };
+    });
+
+    // Sort by daysUntil ascending
+    birthdays.sort((a, b) => a.daysUntil - b.daysUntil);
+
+    res.json(birthdays);
+  } catch (error) {
+    console.error('Error in getUpcomingBirthdays:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+export async function getProfileActivity(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+
+    // Verify requesting user is in the same family circle
+    const connected = await areConnected(user.id, id);
+    if (!connected) {
+      res.status(403).json({ error: 'Forbidden: You do not share a structural family link with this profile' });
+      return;
+    }
+
+    // Fetch posts created by target profile
+    const posts = await prisma.post.findMany({
+      where: { authorId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    // Fetch heritage vault items created by target profile
+    const vaultItems = await prisma.heritageVault.findMany({
+      where: { createdBy: id },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    // Fetch connections (relationships) involving target profile
+    const relationships = await prisma.relationship.findMany({
+      where: {
+        OR: [
+          { personId: id },
+          { relativeId: id }
+        ],
+        isPending: false
+      },
+      include: {
+        person: true,
+        relative: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 10
+    });
+
+    // Fetch target profile details
+    const profile = await prisma.profile.findUnique({
+      where: { id }
+    });
+
+    interface ActivityItem {
+      id: string;
+      type: string;
+      description: string;
+      timestamp: string;
+    }
+
+    const activities: ActivityItem[] = [];
+
+    // Add posts
+    for (const post of posts) {
+      let desc = '';
+      if (post.narrativeType === 'DAILY_LIFE') {
+        desc = `Shared a daily update: "${post.content.substring(0, 60)}${post.content.length > 60 ? '...' : ''}"`;
+      } else if (post.narrativeType === 'MILESTONE') {
+        desc = `Shared a milestone: "${post.content.substring(0, 60)}${post.content.length > 60 ? '...' : ''}"`;
+      } else if (post.narrativeType === 'MEMORY') {
+        desc = `Added a family memory: "${post.content.substring(0, 60)}${post.content.length > 60 ? '...' : ''}"`;
+      } else {
+        desc = `Shared a post: "${post.content.substring(0, 60)}${post.content.length > 60 ? '...' : ''}"`;
+      }
+      activities.push({
+        id: `post-${post.id}`,
+        type: 'post',
+        description: desc,
+        timestamp: post.createdAt.toISOString()
+      });
+    }
+
+    // Add vault items
+    for (const item of vaultItems) {
+      activities.push({
+        id: `vault-${item.id}`,
+        type: 'heritage',
+        description: `Added to the Heritage Vault: "${item.title}"`,
+        timestamp: item.createdAt.toISOString()
+      });
+    }
+
+    // Add relationships
+    for (const rel of relationships) {
+      const other = rel.personId === id ? rel.relative : rel.person;
+      const otherName = `${other.firstName} ${other.lastName}`.trim();
+      let kinshipLabel = rel.kinshipType.toLowerCase();
+      activities.push({
+        id: `rel-${rel.id}`,
+        type: 'relationship',
+        description: `Connected with ${otherName} as ${kinshipLabel}`,
+        timestamp: rel.createdAt.toISOString()
+      });
+    }
+
+    // Add profile joined event
+    if (profile) {
+      activities.push({
+        id: `joined-${profile.id}`,
+        type: 'joined',
+        description: 'Joined the family circle',
+        timestamp: profile.createdAt.toISOString()
+      });
+    }
+
+    // Sort by timestamp desc
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Limit to top 10 items
+    const finalActivities = activities.slice(0, 10);
+
+    res.json(finalActivities);
+  } catch (error) {
+    console.error('Error in getProfileActivity:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
