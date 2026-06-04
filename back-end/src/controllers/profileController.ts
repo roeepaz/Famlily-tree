@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../config/supabase';
 import { getFamilyCircle, areConnected, calculateRelationships } from '../services/familyGraph';
@@ -63,10 +63,12 @@ export async function getCircle(req: AuthenticatedRequest, res: Response): Promi
 
     const relationsMap = calculateRelationships(user.id, rawCircle, relationships);
 
-    const frontendProfiles = rawCircle.map(p => {
-      const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
-      return mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
-    });
+    const frontendProfiles = rawCircle
+      .filter(p => !p.firstName.startsWith("Parent of"))
+      .map(p => {
+        const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
+        return mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
+      });
 
     res.json(frontendProfiles);
   } catch (error) {
@@ -130,7 +132,7 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    let finalTreeId = treeId;
+    let finalTreeId = treeId || req.user?.treeId;
     if (!finalTreeId) {
       const tree = await prisma.familyTree.create({
         data: { name: `${first_name}'s Family` }
@@ -140,7 +142,7 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
 
     const newProfile = await prisma.profile.create({
       data: {
-        id, // Optional, can be supplied from Supabase Auth ID
+        id: id || randomUUID(),
         firstName: first_name,
         lastName: last_name,
         avatarUrl: avatar_url,
@@ -152,7 +154,7 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
         location,
         birthYear: birth_year ? parseInt(birth_year, 10) : (birth_date ? new Date(birth_date).getFullYear() : null),
         deathYear: death_year ? parseInt(death_year, 10) : null,
-        isActive: true,
+        isActive: false,
         treeId: finalTreeId
       }
     });
@@ -428,7 +430,8 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
         targetEmail,
         `${user.firstName} ${user.lastName}`.trim(),
         user.email || '',
-        relationship_type
+        relationship_type,
+        placeholder.id
       ).catch(err => {
         console.error(`Failed to send invitation email to ${targetEmail}:`, err);
       });
@@ -773,4 +776,239 @@ export async function getProfileActivity(req: AuthenticatedRequest, res: Respons
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }
+
+export async function getInvitePreview(req: Request, res: Response): Promise<void> {
+  try {
+    const { email, phone, inviteId } = req.query;
+    if (
+      (!email || typeof email !== 'string' || !email.trim()) && 
+      (!phone || typeof phone !== 'string' || !phone.trim()) &&
+      (!inviteId || typeof inviteId !== 'string' || !inviteId.trim())
+    ) {
+      res.status(400).json({ error: 'Email, phone, or inviteId parameter is required' });
+      return;
+    }
+
+    let placeholder = null;
+    if (inviteId && typeof inviteId === 'string' && inviteId.trim()) {
+      placeholder = await prisma.profile.findFirst({
+        where: {
+          id: inviteId.trim(),
+          isActive: false
+        }
+      });
+    }
+
+    if (!placeholder && email && typeof email === 'string' && email.trim()) {
+      const targetEmail = email.trim().toLowerCase();
+      placeholder = await prisma.profile.findFirst({
+        where: {
+          email: targetEmail,
+          isActive: false
+        }
+      });
+    }
+
+    if (!placeholder && phone && typeof phone === 'string' && phone.trim()) {
+      const targetPhone = phone.trim();
+      const strippedTarget = targetPhone.replace(/\D/g, '');
+      const inactiveProfiles = await prisma.profile.findMany({
+        where: { isActive: false }
+      });
+      placeholder = inactiveProfiles.find(p => 
+        p.phone && p.phone.replace(/\D/g, '') === strippedTarget
+      ) || null;
+    }
+
+    if (!placeholder) {
+      res.status(404).json({ error: 'No invitation found for this account' });
+      return;
+    }
+
+    // 2. Fetch all profiles in the same tree
+    if (!placeholder.treeId) {
+      res.status(400).json({ error: 'Placeholder is not associated with a family tree' });
+      return;
+    }
+
+    const profilesInTree = await prisma.profile.findMany({
+      where: {
+        treeId: placeholder.treeId
+      }
+    });
+
+    // 3. Fetch all relationships in the same tree
+    const profileIds = profilesInTree.map(p => p.id);
+    const relationships = await prisma.relationship.findMany({
+      where: {
+        personId: { in: profileIds },
+        relativeId: { in: profileIds }
+      }
+    });
+
+    // 4. Determine the Creator (the active profile who invited the user)
+    // Find relationships that connect the placeholder to active profiles
+    const placeholderRels = relationships.filter(
+      r => r.personId === placeholder.id || r.relativeId === placeholder.id
+    );
+
+    let creatorProfile = null;
+    for (const rel of placeholderRels) {
+      const otherId = rel.personId === placeholder.id ? rel.relativeId : rel.personId;
+      const otherProfile = profilesInTree.find(p => p.id === otherId);
+      if (otherProfile && otherProfile.isActive) {
+        creatorProfile = otherProfile;
+        break;
+      }
+    }
+
+    // If no direct active connection found, fallback to any active profile in the tree
+    if (!creatorProfile) {
+      creatorProfile = profilesInTree.find(p => p.isActive) || null;
+    }
+
+    const treeName = await prisma.familyTree.findUnique({
+      where: { id: placeholder.treeId },
+      select: { name: true }
+    });
+
+    // 5. Build dynamic relationships mapped to the placeholder's perspective
+    const relationsMap = calculateRelationships(placeholder.id, profilesInTree, relationships);
+
+    const mappedProfiles = profilesInTree
+      .filter(p => !p.firstName.startsWith("Parent of"))
+      .map(p => {
+        const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
+        return {
+          id: p.id,
+          name: `${p.firstName} ${p.lastName}`.trim(),
+          avatar: p.avatarUrl || '',
+          branch: p.familyBranchName || 'Family Branch',
+          isActive: p.isActive,
+          relation: p.id === placeholder.id ? 'You' : relInfo.relation,
+          generation: relInfo.generation
+        };
+      });
+
+    res.json({
+      inviteeName: placeholder.firstName,
+      creatorName: creatorProfile ? `${creatorProfile.firstName} ${creatorProfile.lastName}`.trim() : 'Your Family',
+      treeName: treeName?.name || 'Private Family Tree',
+      profiles: mappedProfiles
+    });
+  } catch (error) {
+    console.error('Error in getInvitePreview:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+export async function claimInvite(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { inviteId } = req.body;
+    if (!inviteId) {
+      res.status(400).json({ error: 'inviteId is required' });
+      return;
+    }
+
+    // Find the placeholder profile
+    const placeholder = await prisma.profile.findUnique({
+      where: { id: inviteId }
+    });
+
+    if (!placeholder) {
+      res.status(404).json({ error: 'Invitation placeholder profile not found' });
+      return;
+    }
+
+    if (placeholder.isActive) {
+      res.status(400).json({ error: 'This invitation has already been claimed' });
+      return;
+    }
+
+    // If the user is already in the same tree as the placeholder, nothing to do
+    if (user.treeId === placeholder.treeId) {
+      res.json({ success: true, message: 'Already connected to this family tree' });
+      return;
+    }
+
+    const oldTreeId = user.treeId;
+    const newTreeId = placeholder.treeId;
+
+    // We need to fuse the placeholder into the current user's profile:
+    // 1. Move relationships from placeholder to current user
+    await prisma.$transaction(async (tx) => {
+      // Clear placeholder email to prevent unique constraint conflict
+      await tx.profile.update({
+        where: { id: placeholder.id },
+        data: { email: null }
+      });
+
+      // Update current user's profile to link to the placeholder's tree
+      // and adopt family branch name if needed
+      await tx.profile.update({
+        where: { id: user.id },
+        data: {
+          treeId: newTreeId,
+          familyBranchName: placeholder.familyBranchName || user.familyBranchName
+        }
+      });
+
+      // Redirect relationships pointing to placeholder to point to current user
+      await tx.relationship.updateMany({
+        where: { personId: placeholder.id },
+        data: { personId: user.id }
+      });
+
+      await tx.relationship.updateMany({
+        where: { relativeId: placeholder.id },
+        data: { relativeId: user.id }
+      });
+
+      // Update posts / heritage items if placeholder had any (unlikely, but safe)
+      await tx.post.updateMany({
+        where: { authorId: placeholder.id },
+        data: { authorId: user.id }
+      });
+
+      await tx.heritageVault.updateMany({
+        where: { createdBy: placeholder.id },
+        data: { createdBy: user.id }
+      });
+
+      // Delete the placeholder profile
+      await tx.profile.delete({
+        where: { id: placeholder.id }
+      });
+
+      // Delete the fresh empty tree that was provisioned for this user
+      if (oldTreeId) {
+        // Double check that no other active profiles are using this old tree before deleting
+        const otherProfiles = await tx.profile.findMany({
+          where: { treeId: oldTreeId, id: { not: user.id } }
+        });
+        if (otherProfiles.length === 0) {
+          await tx.familyTree.delete({
+            where: { id: oldTreeId }
+          });
+        }
+      }
+    });
+
+    // Invalidate caches
+    invalidateCircleCache(user.id);
+
+    res.json({ success: true, message: 'Successfully claimed invitation and joined family tree' });
+  } catch (error) {
+    console.error('Error in claimInvite:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
+
 

@@ -43,6 +43,10 @@ async function apiFetch(endpoint, options = {}) {
 export const api = {
   // Profiles
   getMe: () => apiFetch('/profiles/me'),
+  claimInvite: (inviteId) => apiFetch('/profiles/claim-invite', {
+    method: 'POST',
+    body: JSON.stringify({ inviteId }),
+  }),
   getCircle: () => apiFetch('/profiles/circle'),
   getUpcomingBirthdays: () => apiFetch('/profiles/upcoming-birthdays'),
   getProfile: (id) => apiFetch(`/profiles/${id}`),
@@ -130,4 +134,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ action })
   }),
+  getInvitePreview: (params) => {
+    if (params && typeof params === 'object') {
+      const query = new URLSearchParams(params).toString();
+      return apiFetch(`/profiles/invite-preview?${query}`);
+    }
+    return apiFetch(`/profiles/invite-preview?email=${encodeURIComponent(params || '')}`);
+  },
 };

@@ -12,15 +12,22 @@ import {
   getPendingRequests,
   respondToRequest,
   getUpcomingBirthdays,
-  getProfileActivity
+  getProfileActivity,
+  getInvitePreview,
+  claimInvite
 } from '../controllers/profileController';
 
 const router = Router();
 
+// Public route to fetch pre-populated invite tree previews
+router.get('/invite-preview', getInvitePreview);
+
 // Secure all profile routes
 router.use(requireAuth);
 
+
 router.get('/me', getMe);
+router.post('/claim-invite', claimInvite);
 router.get('/circle', getCircle);
 router.get('/upcoming-birthdays', getUpcomingBirthdays);
 router.post('/connect-email', connectExistingByEmail);

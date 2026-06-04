@@ -53,8 +53,27 @@ async function checkAndFixTrigger() {
       old_id UUID;
       new_tree_id UUID;
     BEGIN
-      -- Find placeholder
-      SELECT id INTO old_id FROM public.profiles WHERE email = NEW.email AND is_active = false LIMIT 1;
+      -- Check if a placeholder profile exists
+      -- Try to find by invite_id first, then email, then phone
+      IF NEW.raw_user_meta_data->>'invite_id' IS NOT NULL AND NEW.raw_user_meta_data->>'invite_id' <> '' THEN
+        BEGIN
+          SELECT id INTO old_id FROM public.profiles
+          WHERE id = (NEW.raw_user_meta_data->>'invite_id')::uuid AND is_active = false;
+        EXCEPTION WHEN OTHERS THEN
+          old_id := NULL;
+        END;
+      END IF;
+
+      IF old_id IS NULL THEN
+        SELECT id INTO old_id FROM public.profiles 
+        WHERE (
+          (email IS NOT NULL AND LOWER(email) = LOWER(NEW.email)) OR 
+          (phone IS NOT NULL AND (
+            regexp_replace(phone, '\D', '', 'g') = regexp_replace(NEW.phone, '\D', '', 'g') OR
+            regexp_replace(phone, '\D', '', 'g') = regexp_replace(NEW.raw_user_meta_data->>'phone', '\D', '', 'g')
+          ))
+        ) AND is_active = false LIMIT 1;
+      END IF;
 
       IF old_id IS NOT NULL THEN
         -- 1. Clear the email on the old profile to avoid unique constraint violation when inserting the new profile
@@ -69,14 +88,28 @@ async function checkAndFixTrigger() {
           NEW.id,
           (SELECT tree_id FROM public.profiles WHERE id = old_id),
           NEW.email,
-          COALESCE(NEW.raw_user_meta_data->>'first_name', (SELECT first_name FROM public.profiles WHERE id = old_id)),
-          COALESCE(NEW.raw_user_meta_data->>'last_name', (SELECT last_name FROM public.profiles WHERE id = old_id)),
+          COALESCE(
+            NEW.raw_user_meta_data->>'first_name',
+            NEW.raw_user_meta_data->>'given_name',
+            split_part(NEW.raw_user_meta_data->>'name', ' ', 1),
+            (SELECT first_name FROM public.profiles WHERE id = old_id)
+          ),
+          COALESCE(
+            NEW.raw_user_meta_data->>'last_name',
+            NEW.raw_user_meta_data->>'family_name',
+            NULLIF(trim(both ' ' from replace(NEW.raw_user_meta_data->>'name', split_part(NEW.raw_user_meta_data->>'name', ' ', 1), '')), ''),
+            (SELECT last_name FROM public.profiles WHERE id = old_id)
+          ),
           true,
           NOW(),
           COALESCE(NEW.raw_user_meta_data->>'family_branch_name', (SELECT family_branch_name FROM public.profiles WHERE id = old_id)),
           COALESCE(NEW.raw_user_meta_data->>'phone', (SELECT phone FROM public.profiles WHERE id = old_id)),
           COALESCE(NEW.raw_user_meta_data->>'location', (SELECT location FROM public.profiles WHERE id = old_id)),
-          COALESCE(NEW.raw_user_meta_data->>'avatar_url', (SELECT avatar_url FROM public.profiles WHERE id = old_id)),
+          COALESCE(
+            NEW.raw_user_meta_data->>'avatar_url',
+            NEW.raw_user_meta_data->>'picture',
+            (SELECT avatar_url FROM public.profiles WHERE id = old_id)
+          ),
           CASE WHEN NEW.raw_user_meta_data->>'birth_date' IS NOT NULL THEN (NEW.raw_user_meta_data->>'birth_date')::timestamp WITH time zone ELSE (SELECT birth_date FROM public.profiles WHERE id = old_id) END,
           CASE WHEN NEW.raw_user_meta_data->>'birth_date' IS NOT NULL THEN EXTRACT(YEAR FROM (NEW.raw_user_meta_data->>'birth_date')::timestamp WITH time zone)::integer ELSE (SELECT birth_year FROM public.profiles WHERE id = old_id) END
         );
@@ -96,7 +129,15 @@ async function checkAndFixTrigger() {
         INSERT INTO public.family_trees (id, name)
         VALUES (
           new_tree_id, 
-          COALESCE(NEW.raw_user_meta_data->>'family_branch_name', COALESCE(NEW.raw_user_meta_data->>'last_name', 'User') || ' Family')
+          COALESCE(
+            NEW.raw_user_meta_data->>'family_branch_name',
+            COALESCE(
+              NEW.raw_user_meta_data->>'last_name',
+              NEW.raw_user_meta_data->>'family_name',
+              NULLIF(trim(both ' ' from replace(NEW.raw_user_meta_data->>'name', split_part(NEW.raw_user_meta_data->>'name', ' ', 1), '')), ''),
+              'User'
+            ) || ' Family'
+          )
         );
 
         INSERT INTO public.profiles (
@@ -106,14 +147,35 @@ async function checkAndFixTrigger() {
         VALUES (
           NEW.id, 
           NEW.email, 
-          COALESCE(NEW.raw_user_meta_data->>'first_name', 'First Name'), 
-          COALESCE(NEW.raw_user_meta_data->>'last_name', 'Last Name'),
+          COALESCE(
+            NEW.raw_user_meta_data->>'first_name',
+            NEW.raw_user_meta_data->>'given_name',
+            split_part(NEW.raw_user_meta_data->>'name', ' ', 1),
+            'First Name'
+          ), 
+          COALESCE(
+            NEW.raw_user_meta_data->>'last_name',
+            NEW.raw_user_meta_data->>'family_name',
+            NULLIF(trim(both ' ' from replace(NEW.raw_user_meta_data->>'name', split_part(NEW.raw_user_meta_data->>'name', ' ', 1), '')), ''),
+            'Last Name'
+          ),
           true,
           new_tree_id,
-          NEW.raw_user_meta_data->>'avatar_url',
+          COALESCE(
+            NEW.raw_user_meta_data->>'avatar_url',
+            NEW.raw_user_meta_data->>'picture'
+          ),
           NEW.raw_user_meta_data->>'phone',
           NEW.raw_user_meta_data->>'location',
-          COALESCE(NEW.raw_user_meta_data->>'family_branch_name', COALESCE(NEW.raw_user_meta_data->>'last_name', 'User') || ' Family'),
+          COALESCE(
+            NEW.raw_user_meta_data->>'family_branch_name',
+            COALESCE(
+              NEW.raw_user_meta_data->>'last_name',
+              NEW.raw_user_meta_data->>'family_name',
+              NULLIF(trim(both ' ' from replace(NEW.raw_user_meta_data->>'name', split_part(NEW.raw_user_meta_data->>'name', ' ', 1), '')), ''),
+              'User'
+            ) || ' Family'
+          ),
           CASE WHEN NEW.raw_user_meta_data->>'birth_date' IS NOT NULL THEN (NEW.raw_user_meta_data->>'birth_date')::timestamp WITH time zone ELSE NULL END,
           CASE WHEN NEW.raw_user_meta_data->>'birth_date' IS NOT NULL THEN EXTRACT(YEAR FROM (NEW.raw_user_meta_data->>'birth_date')::timestamp WITH time zone)::integer ELSE NULL END,
           NOW()

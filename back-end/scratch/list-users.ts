@@ -6,7 +6,7 @@ async function run() {
   console.log('Fetching users from auth.users...');
   try {
     const users = await prisma.$queryRawUnsafe(`
-      SELECT id, email, confirmed_at, email_confirmed_at, created_at 
+      SELECT id, email, raw_user_meta_data, confirmed_at, email_confirmed_at, created_at 
       FROM auth.users;
     `);
     console.log('Registered Auth Users:', JSON.stringify(users, null, 2));

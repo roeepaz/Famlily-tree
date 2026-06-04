@@ -110,9 +110,12 @@ export async function sendInvitationEmail(
   targetEmail: string,
   senderName: string,
   senderEmail: string,
-  relationshipType: string
+  relationshipType: string,
+  inviteId?: string
 ): Promise<void> {
-  const registerUrl = `${frontendUrl}/register?email=${encodeURIComponent(targetEmail)}`;
+  const registerUrl = inviteId
+    ? `${frontendUrl}/register?inviteId=${inviteId}&email=${encodeURIComponent(targetEmail)}`
+    : `${frontendUrl}/register?email=${encodeURIComponent(targetEmail)}`;
   const subject = `Join ${senderName} on Kinship`;
   const htmlContent = `
     <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 580px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #f1f5f9; border-radius: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">

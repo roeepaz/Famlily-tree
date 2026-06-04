@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import CompleteProfileOnboarding from '@/components/CompleteProfileOnboarding';
 import AppLoader from '@/components/AppLoader';
 import Home from './pages/Home';
 import Login from './pages/Login';
@@ -13,7 +14,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
 const AuthenticatedApp = () => {
-  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, isProfileIncomplete } = useAuth();
 
   // Show cinematic splash loader while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -23,6 +24,11 @@ const AuthenticatedApp = () => {
   // Handle authentication errors (specifically where user is authenticated via Supabase but has no backend profile)
   if (authError && authError.type === 'user_not_registered') {
     return <UserNotRegisteredError />;
+  }
+
+  // Render onboarding if user is logged in but has an incomplete profile
+  if (isAuthenticated && isProfileIncomplete) {
+    return <CompleteProfileOnboarding />;
   }
 
   // Render routes with guards

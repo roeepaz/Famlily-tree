@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "db:clean": "ts-node scratch/clean-db.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",

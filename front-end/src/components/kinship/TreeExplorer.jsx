@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import RelativeNodeCard from "./RelativeNodeCard";
 import ProfileDrawer from "./ProfileDrawer";
 import AddRelativeModal from "./AddRelativeModal";
+import SparkOnboardingCanvas from "./SparkOnboardingCanvas";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { UserPlus, Clock, Check, X } from "lucide-react";
+
 
 const GENERATIONS = [
   { key: "grandparents", label: "Grandparents" },
@@ -17,7 +19,7 @@ const GENERATIONS = [
   { key: "grandchildren", label: "Grandchildren" },
 ];
 
-export default function TreeExplorer() {
+export default function TreeExplorer({ onLaunchSpark, onTabChange }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalAnchorId, setAddModalAnchorId] = useState(null);
@@ -76,6 +78,19 @@ export default function TreeExplorer() {
     );
   }
 
+  const isOnboardingActive =
+    user &&
+    familyCircle.length <= 1 &&
+    localStorage.getItem(`kinship_spark_completed_${user.id}`) !== "true";
+
+  if (isOnboardingActive) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <SparkOnboardingCanvas familyCircle={familyCircle} />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-10 pb-6 border-b border-border">
@@ -85,16 +100,26 @@ export default function TreeExplorer() {
             Explore your family connections. Click on anyone to see their profile.
           </p>
         </div>
-        <Button 
-          onClick={() => {
-            setAddModalAnchorId(user?.id);
-            setIsAddModalOpen(true);
-          }} 
-          className="rounded-xl gap-2 font-medium px-5 shadow-sm"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Relative
-        </Button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <Button 
+            onClick={onLaunchSpark} 
+            variant="outline"
+            className="w-full sm:w-auto rounded-xl gap-2 border-teal-500/30 text-teal-600 hover:bg-teal-500/5 hover:text-teal-700 dark:border-teal-700/50 dark:text-teal-400 dark:hover:bg-teal-500/10 dark:hover:text-teal-300 font-medium px-5 shadow-sm"
+          >
+            <span>🌱</span>
+            <span>Launch Onboarding Wizard</span>
+          </Button>
+          <Button 
+            onClick={() => {
+              setAddModalAnchorId(user?.id);
+              setIsAddModalOpen(true);
+            }} 
+            className="w-full sm:w-auto rounded-xl gap-2 font-medium px-5 shadow-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Relative
+          </Button>
+        </div>
       </div>
 
       {/* Pending Connection Requests Banner */}

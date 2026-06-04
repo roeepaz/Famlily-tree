@@ -12,6 +12,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isProfileIncomplete, setIsProfileIncomplete] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -24,10 +25,36 @@ export const AuthProvider = ({ children }) => {
   const checkUserAuth = async () => {
     setIsLoadingAuth(true);
     try {
-      const profile = await api.getMe();
+      let profile = await api.getMe();
+
+      // Auto-claim pending invite if one exists in localStorage
+      const pendingInviteId = localStorage.getItem('pending_invite_id');
+      if (pendingInviteId && profile) {
+        try {
+          console.log('[AuthContext] Attempting to auto-claim pending invite:', pendingInviteId);
+          await api.claimInvite(pendingInviteId);
+          localStorage.removeItem('pending_invite_id');
+          // Fetch updated profile after claiming
+          profile = await api.getMe();
+        } catch (inviteErr) {
+          console.error('[AuthContext] Failed to claim pending invite:', inviteErr);
+        }
+      }
+
       setUser(profile);
       setIsAuthenticated(true);
       setAuthError(null);
+
+      // Check if profile is incomplete (missing birthDate/birthYear or phone, or default generic name)
+      const isDefaultName = profile.name && (
+        profile.name.toLowerCase() === 'first name last name' || 
+        profile.name.toLowerCase().startsWith('first name')
+      );
+      if (!profile.birthYear || !profile.phone || isDefaultName) {
+        setIsProfileIncomplete(true);
+      } else {
+        setIsProfileIncomplete(false);
+      }
     } catch (err) {
       console.warn('Auth validation failed, setting unauthenticated state:', err.message);
       // Check for user registration states from backend responses
@@ -38,6 +65,7 @@ export const AuthProvider = ({ children }) => {
       }
       setUser(null);
       setIsAuthenticated(false);
+      setIsProfileIncomplete(false);
     } finally {
       setIsLoadingAuth(false);
       setAuthChecked(true);
@@ -95,6 +123,7 @@ export const AuthProvider = ({ children }) => {
           location: extraFields.location || null,
           birth_date: extraFields.birthDate || null,
           avatar_url: extraFields.avatarUrl || null,
+          invite_id: extraFields.inviteId || null,
         },
       },
     });
@@ -110,6 +139,24 @@ export const AuthProvider = ({ children }) => {
     const { data, error } = await supabaseClient.auth.signInWithPassword({
       email,
       password,
+    });
+
+    if (error) {
+      throw error;
+    }
+    return data;
+  };
+  
+  const signInWithGoogle = async (inviteId = null) => {
+    setAuthError(null);
+    if (inviteId) {
+      localStorage.setItem('pending_invite_id', inviteId);
+    }
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+      }
     });
 
     if (error) {
@@ -135,6 +182,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('supabase_access_token');
     setUser(null);
     setIsAuthenticated(false);
+    setIsProfileIncomplete(false);
     setAuthError(null);
   };
   
@@ -146,6 +194,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{ 
       user, 
       isAuthenticated, 
+      isProfileIncomplete,
       isLoadingAuth,
       isLoadingPublicSettings,
       authError,
@@ -153,6 +202,7 @@ export const AuthProvider = ({ children }) => {
       authChecked,
       signUp,
       signIn,
+      signInWithGoogle,
       logout,
       resetPassword,
       updatePassword,
