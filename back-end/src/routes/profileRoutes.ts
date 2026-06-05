@@ -10,19 +10,30 @@ import {
   deleteRelationship,
   connectExistingByEmail,
   getPendingRequests,
-  respondToRequest
+  respondToRequest,
+  getUpcomingBirthdays,
+  getProfileActivity,
+  getInvitePreview,
+  claimInvite
 } from '../controllers/profileController';
 
 const router = Router();
 
+// Public route to fetch pre-populated invite tree previews
+router.get('/invite-preview', getInvitePreview);
+
 // Secure all profile routes
 router.use(requireAuth);
 
+
 router.get('/me', getMe);
+router.post('/claim-invite', claimInvite);
 router.get('/circle', getCircle);
+router.get('/upcoming-birthdays', getUpcomingBirthdays);
 router.post('/connect-email', connectExistingByEmail);
 router.get('/pending-requests', getPendingRequests);
 router.post('/pending-requests/:id/respond', respondToRequest);
+router.get('/:id/activity', getProfileActivity);
 router.get('/:id', getProfileById);
 router.post('/', createProfile);
 router.put('/:id', updateProfile);

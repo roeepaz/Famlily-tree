@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import RelativeNodeCard from "./RelativeNodeCard";
 import ProfileDrawer from "./ProfileDrawer";
 import AddRelativeModal from "./AddRelativeModal";
+import SparkOnboardingCanvas from "./SparkOnboardingCanvas";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
@@ -9,14 +10,16 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { UserPlus, Clock, Check, X } from "lucide-react";
 
+
 const GENERATIONS = [
   { key: "grandparents", label: "Grandparents" },
   { key: "parents", label: "Parents & Uncles/Aunts" },
   { key: "siblings", label: "Siblings & Cousins" },
-  { key: "children", label: "Children" },
+  { key: "children", label: "Children & Nephews/Nieces" },
+  { key: "grandchildren", label: "Grandchildren" },
 ];
 
-export default function TreeExplorer() {
+export default function TreeExplorer({ onLaunchSpark, onTabChange }) {
   const [selectedMember, setSelectedMember] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalAnchorId, setAddModalAnchorId] = useState(null);
@@ -60,10 +63,30 @@ export default function TreeExplorer() {
     grouped[g.key] = familyCircle.filter((m) => m.generation === g.key && m.id !== user?.id);
   });
 
+  const visibleGenerations = GENERATIONS.filter((gen) => {
+    const members = grouped[gen.key] || [];
+    const hasMembers = members.length > 0;
+    const isSiblingsRow = gen.key === "siblings" && user;
+    return hasMembers || isSiblingsRow;
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  const isOnboardingActive =
+    user &&
+    familyCircle.length <= 1 &&
+    localStorage.getItem(`kinship_spark_completed_${user.id}`) !== "true";
+
+  if (isOnboardingActive) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <SparkOnboardingCanvas familyCircle={familyCircle} />
       </div>
     );
   }
@@ -77,22 +100,32 @@ export default function TreeExplorer() {
             Explore your family connections. Click on anyone to see their profile.
           </p>
         </div>
-        <Button 
-          onClick={() => {
-            setAddModalAnchorId(user?.id);
-            setIsAddModalOpen(true);
-          }} 
-          className="rounded-xl gap-2 font-medium px-5 shadow-sm"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Relative
-        </Button>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <Button 
+            onClick={onLaunchSpark} 
+            variant="outline"
+            className="w-full sm:w-auto rounded-xl gap-2 border-teal-500/30 text-teal-600 hover:bg-teal-500/5 hover:text-teal-700 dark:border-teal-700/50 dark:text-teal-400 dark:hover:bg-teal-500/10 dark:hover:text-teal-300 font-medium px-5 shadow-sm"
+          >
+            <span>🌱</span>
+            <span>פתח את עורך עץ המשפחה</span>
+          </Button>
+          <Button 
+            onClick={() => {
+              setAddModalAnchorId(user?.id);
+              setIsAddModalOpen(true);
+            }} 
+            className="w-full sm:w-auto rounded-xl gap-2 font-medium px-5 shadow-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Relative
+          </Button>
+        </div>
       </div>
 
       {/* Pending Connection Requests Banner */}
       {pendingRequests.length > 0 && (
         <div className="mb-8 space-y-3 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-500">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">
             <Clock className="w-4 h-4 animate-pulse" />
             Pending Family Connections ({pendingRequests.length})
           </div>
@@ -100,7 +133,7 @@ export default function TreeExplorer() {
             {pendingRequests.map((req) => (
               <div 
                 key={req.id} 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50/60 to-orange-50/60 backdrop-blur-md border border-amber-200/60 rounded-2xl shadow-sm dark:from-amber-950/20 dark:to-orange-950/20 dark:border-amber-900/40"
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-teal-50/60 to-cyan-50/60 backdrop-blur-md border border-teal-200/60 rounded-2xl shadow-sm dark:from-teal-950/20 dark:to-cyan-950/20 dark:border-teal-900/40"
               >
                 <div className="flex items-center gap-3">
                   <img
@@ -130,7 +163,7 @@ export default function TreeExplorer() {
                     size="sm"
                     onClick={() => respondMutation.mutate({ id: req.id, action: "accept" })}
                     disabled={respondMutation.isPending}
-                    className="h-8 px-3 rounded-full bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-700 dark:hover:bg-amber-600 font-medium text-xs flex items-center gap-1.5 shadow-sm transition-all duration-200 hover:scale-[1.02]"
+                    className="h-8 px-3 rounded-full bg-teal-600 hover:bg-teal-700 text-white dark:bg-teal-700 dark:hover:bg-teal-600 font-medium text-xs flex items-center gap-1.5 shadow-sm transition-all duration-200 hover:scale-[1.02]"
                   >
                     <Check className="w-3.5 h-3.5" />
                     Confirm
@@ -143,11 +176,8 @@ export default function TreeExplorer() {
       )}
 
       <div className="space-y-10">
-        {GENERATIONS.map((gen) => {
-          const members = grouped[gen.key];
-          const hasMembers = members.length > 0;
-          const isSiblingsRow = gen.key === "siblings" && user;
-          if (!hasMembers && !isSiblingsRow) return null;
+        {visibleGenerations.map((gen, index) => {
+          const members = grouped[gen.key] || [];
 
           return (
             <div key={gen.key}>
@@ -158,7 +188,7 @@ export default function TreeExplorer() {
               </div>
 
               {/* Insert "You" in the siblings row */}
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto sm:overflow-x-visible pb-3 sm:pb-0 justify-start sm:justify-center gap-4 px-4 sm:px-0 no-scrollbar">
                 {gen.key === "siblings" && user && (
                   <RelativeNodeCard
                     member={{ ...user, relation: "You" }}
@@ -177,7 +207,7 @@ export default function TreeExplorer() {
               </div>
 
               {/* Connector line */}
-              {gen.key !== "children" && (
+              {index !== visibleGenerations.length - 1 && (
                 <div className="flex justify-center mt-5">
                   <div className="w-px h-8 bg-border" />
                 </div>
@@ -208,4 +238,4 @@ export default function TreeExplorer() {
       />
     </div>
   );
-}
+}

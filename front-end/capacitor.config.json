@@ -1,0 +1,6 @@
+{
+  "appId": "com.kinship.app",
+  "appName": "Kinship",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

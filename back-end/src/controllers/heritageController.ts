@@ -7,15 +7,15 @@ import { getFamilyCircle } from '../services/familyGraph';
  * Format DB HeritageVault event for frontend compatibility
  */
 function mapHeritageToFrontend(event: any) {
-  const creatorName = `${event.creator.first_name} ${event.creator.last_name}`.trim();
+  const creatorName = `${event.creator.firstName} ${event.creator.lastName}`.trim();
   return {
     id: event.id,
-    year: event.event_date ? new Date(event.event_date).getFullYear() : null,
+    year: event.eventDate ? new Date(event.eventDate).getFullYear() : null,
     title: event.title,
-    branch: event.creator.family_branch_name || 'Family Branch',
+    branch: event.creator.familyBranchName || 'Family Branch',
     content: event.description,
-    image: event.media_urls && event.media_urls.length > 0 ? event.media_urls[0] : null,
-    mediaUrls: event.media_urls || [],
+    image: event.mediaUrls && event.mediaUrls.length > 0 ? event.mediaUrls[0] : null,
+    mediaUrls: event.mediaUrls || [],
     contributors: [creatorName],
     type: 'event' // Default event type
   };
@@ -36,13 +36,13 @@ export async function getHeritageEvents(req: AuthenticatedRequest, res: Response
     // Fetch heritage events created by anyone in the family circle
     const events = await prisma.heritageVault.findMany({
       where: {
-        created_by: { in: circleIds }
+        createdBy: { in: circleIds }
       },
       include: {
         creator: true
       },
       orderBy: {
-        event_date: 'asc'
+        eventDate: 'asc'
       }
     });
 
@@ -88,13 +88,28 @@ export async function createHeritageEvent(req: AuthenticatedRequest, res: Respon
       return;
     }
 
+    // Resolve or provision user's FamilyTree treeId
+    let treeId = user.treeId;
+    if (!treeId) {
+      const newTree = await prisma.familyTree.create({
+        data: { name: `${user.firstName}'s Family` }
+      });
+      treeId = newTree.id;
+      await prisma.profile.update({
+        where: { id: user.id },
+        data: { treeId }
+      });
+      user.treeId = treeId;
+    }
+
     const newEvent = await prisma.heritageVault.create({
       data: {
         title,
         description,
-        event_date: new Date(event_date),
-        created_by: user.id,
-        media_urls: Array.isArray(media_urls) ? media_urls : []
+        eventDate: new Date(event_date),
+        createdBy: user.id,
+        treeId: treeId,
+        mediaUrls: Array.isArray(media_urls) ? media_urls : []
       },
       include: {
         creator: true
@@ -128,7 +143,7 @@ export async function deleteHeritageEvent(req: AuthenticatedRequest, res: Respon
     }
 
     // Only allow deletion by event creator
-    if (event.created_by !== user.id) {
+    if (event.createdBy !== user.id) {
       res.status(403).json({ error: 'Forbidden: You can only delete your own heritage events' });
       return;
     }

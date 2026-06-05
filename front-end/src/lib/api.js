@@ -43,8 +43,14 @@ async function apiFetch(endpoint, options = {}) {
 export const api = {
   // Profiles
   getMe: () => apiFetch('/profiles/me'),
+  claimInvite: (inviteId) => apiFetch('/profiles/claim-invite', {
+    method: 'POST',
+    body: JSON.stringify({ inviteId }),
+  }),
   getCircle: () => apiFetch('/profiles/circle'),
+  getUpcomingBirthdays: () => apiFetch('/profiles/upcoming-birthdays'),
   getProfile: (id) => apiFetch(`/profiles/${id}`),
+  getProfileActivity: (id) => apiFetch(`/profiles/${id}/activity`),
   createProfile: (profileData) => apiFetch('/profiles', {
     method: 'POST',
     body: JSON.stringify(profileData),
@@ -61,12 +67,23 @@ export const api = {
   // Posts / Social Feed
   getPosts: () => apiFetch('/posts'),
   getPost: (id) => apiFetch(`/posts/${id}`),
-  createPost: (content, imageUrl) => apiFetch('/posts', {
+  createPost: (content, imageUrl, type) => apiFetch('/posts', {
     method: 'POST',
-    body: JSON.stringify({ content, image_url: imageUrl }),
+    body: JSON.stringify({ content, image_url: imageUrl, type }),
   }),
   deletePost: (id) => apiFetch(`/posts/${id}`, {
     method: 'DELETE',
+  }),
+  addComment: (postId, text) => apiFetch(`/posts/${postId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  }),
+  deleteComment: (postId, commentId) => apiFetch(`/posts/${postId}/comments/${commentId}`, {
+    method: 'DELETE',
+  }),
+  toggleReaction: (postId, emoji) => apiFetch(`/posts/${postId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
   }),
 
   // Heritage Vault / Timeline Events
@@ -85,6 +102,28 @@ export const api = {
     method: 'DELETE',
   }),
 
+  // Family Events
+  getEvents: () => apiFetch('/events'),
+  getEvent: (id) => apiFetch(`/events/${id}`),
+  createEvent: (eventData) => apiFetch('/events', {
+    method: 'POST',
+    body: JSON.stringify(eventData)
+  }),
+  updateEvent: (id, eventData) => apiFetch(`/events/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(eventData)
+  }),
+  deleteEvent: (id) => apiFetch(`/events/${id}`, {
+    method: 'DELETE'
+  }),
+  rsvpEvent: (eventId, status) => apiFetch(`/events/${eventId}/rsvp`, {
+    method: 'POST',
+    body: JSON.stringify({ status })
+  }),
+  votePollOption: (optionId) => apiFetch(`/events/options/${optionId}/vote`, {
+    method: 'POST'
+  }),
+
   // Connection Requests
   connectExistingByEmail: (email, relationshipType) => apiFetch('/profiles/connect-email', {
     method: 'POST',
@@ -95,4 +134,11 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ action })
   }),
+  getInvitePreview: (params) => {
+    if (params && typeof params === 'object') {
+      const query = new URLSearchParams(params).toString();
+      return apiFetch(`/profiles/invite-preview?${query}`);
+    }
+    return apiFetch(`/profiles/invite-preview?email=${encodeURIComponent(params || '')}`);
+  },
 };

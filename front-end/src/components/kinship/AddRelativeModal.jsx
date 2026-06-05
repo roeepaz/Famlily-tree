@@ -28,7 +28,7 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
     enabled: isOpen,
   });
 
-  const [activeTab, setActiveTab] = useState("manual"); // "manual" or "email"
+  const [activeTab, setActiveTab] = useState("email"); // "email" or "manual"
 
   const [formData, setFormData] = useState({
     first_name: "",
@@ -36,6 +36,7 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
     email: "",
     phone: "",
     location: "",
+    birth_date: "",
     birth_year: "",
     is_deceased: false,
     death_year: "",
@@ -71,6 +72,7 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
         email: "",
         phone: "",
         location: "",
+        birth_date: "",
         birth_year: "",
         is_deceased: false,
         death_year: "",
@@ -85,16 +87,19 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
         relationship_type: "PARENT",
       });
       setEmailErrors({});
-      setActiveTab("manual");
+      setActiveTab("email");
     }
   }, [isOpen, preselectedAnchorId, familyCircle, user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      if (name === "birth_date" && value && !prev.birth_year) {
+        updated.birth_year = new Date(value).getFullYear().toString();
+      }
+      return updated;
+    });
     // Clear error
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
@@ -166,6 +171,7 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
         email: data.email.trim() || null,
         phone: data.phone.trim() || null,
         location: data.location.trim() || null,
+        birth_date: data.birth_date || null,
         birth_year: data.birth_year ? parseInt(data.birth_year, 10) : null,
         is_deceased: data.is_deceased,
         death_year: data.is_deceased && data.death_year ? parseInt(data.death_year, 10) : null,
@@ -260,17 +266,6 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
         <div className="grid grid-cols-2 p-1 bg-secondary/50 backdrop-blur-sm rounded-xl border border-border/50 text-xs mb-2">
           <button
             type="button"
-            onClick={() => setActiveTab("manual")}
-            className={`py-2 px-3 rounded-lg font-medium transition-all duration-200 ${
-              activeTab === "manual"
-                ? "bg-background text-primary shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Create Profile
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveTab("email")}
             className={`py-2 px-3 rounded-lg font-medium transition-all duration-200 ${
               activeTab === "email"
@@ -279,6 +274,17 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
             }`}
           >
             Connect via Email
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("manual")}
+            className={`py-2 px-3 rounded-lg font-medium transition-all duration-200 ${
+              activeTab === "manual"
+                ? "bg-background text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Add Family Connection
           </button>
         </div>
 
@@ -360,6 +366,19 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
+                  <Label htmlFor="birth_date" className="text-xs font-medium">Birth Date <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+                  <Input
+                    id="birth_date"
+                    name="birth_date"
+                    type="date"
+                    max={new Date().toISOString().split('T')[0]}
+                    value={formData.birth_date}
+                    onChange={handleChange}
+                    className="text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1">
                   <Label htmlFor="birth_year" className="text-xs font-medium">Birth Year <span className="text-muted-foreground font-normal">(Optional)</span></Label>
                   <Input
                     id="birth_year"
@@ -372,18 +391,18 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
                   />
                   {errors.birth_year && <p className="text-[10px] text-destructive">{errors.birth_year}</p>}
                 </div>
+              </div>
 
-                <div className="space-y-1">
-                  <Label htmlFor="family_branch_name" className="text-xs font-medium">Family Branch <span className="text-muted-foreground font-normal">(Optional)</span></Label>
-                  <Input
-                    id="family_branch_name"
-                    name="family_branch_name"
-                    value={formData.family_branch_name}
-                    onChange={handleChange}
-                    placeholder="e.g. Mitchell Circle"
-                    className="text-sm"
-                  />
-                </div>
+              <div className="space-y-1">
+                <Label htmlFor="family_branch_name" className="text-xs font-medium">Family Branch <span className="text-muted-foreground font-normal">(Optional)</span></Label>
+                <Input
+                  id="family_branch_name"
+                  name="family_branch_name"
+                  value={formData.family_branch_name}
+                  onChange={handleChange}
+                  placeholder="e.g. Mitchell Circle"
+                  className="text-sm"
+                />
               </div>
 
               <div className="space-y-3 pt-1">

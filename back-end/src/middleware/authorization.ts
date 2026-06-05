@@ -27,7 +27,7 @@ export async function requireFamilyLinkForPost(
 
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      select: { author_id: true }
+      select: { authorId: true }
     });
 
     if (!post) {
@@ -35,7 +35,7 @@ export async function requireFamilyLinkForPost(
       return;
     }
 
-    const connected = await areConnected(user.id, post.author_id);
+    const connected = await areConnected(user.id, post.authorId);
     if (!connected) {
       res.status(403).json({ 
         error: 'Forbidden: You do not share a structural family link with the author of this post.' 
@@ -74,7 +74,7 @@ export async function requireFamilyLinkForHeritage(
 
     const event = await prisma.heritageVault.findUnique({
       where: { id: eventId },
-      select: { created_by: true }
+      select: { createdBy: true }
     });
 
     if (!event) {
@@ -82,7 +82,7 @@ export async function requireFamilyLinkForHeritage(
       return;
     }
 
-    const connected = await areConnected(user.id, event.created_by);
+    const connected = await areConnected(user.id, event.createdBy);
     if (!connected) {
       res.status(403).json({ 
         error: 'Forbidden: You do not share a structural family link with the creator of this event.' 
