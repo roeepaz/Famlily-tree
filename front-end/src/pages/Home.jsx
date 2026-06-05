@@ -49,7 +49,7 @@ export default function Home() {
   const ActiveView = views[activeTab];
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20 sm:pb-0">
       <Navbar 
         activeTab={activeTab} 
         onTabChange={setActiveTab} 

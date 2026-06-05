@@ -107,7 +107,7 @@ export default function TreeExplorer({ onLaunchSpark, onTabChange }) {
             className="w-full sm:w-auto rounded-xl gap-2 border-teal-500/30 text-teal-600 hover:bg-teal-500/5 hover:text-teal-700 dark:border-teal-700/50 dark:text-teal-400 dark:hover:bg-teal-500/10 dark:hover:text-teal-300 font-medium px-5 shadow-sm"
           >
             <span>🌱</span>
-            <span>Launch Onboarding Wizard</span>
+            <span>פתח את עורך עץ המשפחה</span>
           </Button>
           <Button 
             onClick={() => {
@@ -188,7 +188,7 @@ export default function TreeExplorer({ onLaunchSpark, onTabChange }) {
               </div>
 
               {/* Insert "You" in the siblings row */}
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto sm:overflow-x-visible pb-3 sm:pb-0 justify-start sm:justify-center gap-4 px-4 sm:px-0 no-scrollbar">
                 {gen.key === "siblings" && user && (
                   <RelativeNodeCard
                     member={{ ...user, relation: "You" }}
@@ -238,4 +238,4 @@ export default function TreeExplorer({ onLaunchSpark, onTabChange }) {
       />
     </div>
   );
-}
+}

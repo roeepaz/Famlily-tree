@@ -10,7 +10,6 @@ import { toast } from "@/components/ui/use-toast";
 import {
   FeedSkeleton,
   StatsSkeleton,
-  MemberRowSkeleton,
   CompactRowSkeleton,
 } from "./SkeletonLoaders";
 
@@ -258,42 +257,10 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
                   className="w-full mt-4 py-2 border border-teal-500/20 hover:border-teal-500/40 bg-teal-500/5 hover:bg-teal-500/10 text-teal-600 dark:text-teal-400 dark:bg-teal-950/20 dark:hover:bg-teal-950/40 text-[10px] font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all duration-200"
                 >
                   <span>🌱</span>
-                  <span>Restart Onboarding Tour</span>
+                  <span>פתח את עורך עץ המשפחה</span>
                 </button>
               </div>
             )}
-          </div>
-
-          <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
-            <h3 className="font-heading text-base font-semibold text-foreground mb-3">Active Members</h3>
-            <div className="space-y-2.5">
-              {isLoadingMembers ? (
-                [1, 2, 3, 4].map((i) => <MemberRowSkeleton key={i} />)
-              ) : (
-                familyMembers.filter(m => !m.isDeceased).slice(0, 5).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      setSelectedMember(m);
-                      setIsDrawerOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2.5 p-1 rounded-xl hover:bg-secondary/30 transition-colors text-left group"
-                  >
-                    {m.avatar ? (
-                      <img src={m.avatar} alt={m.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-primary/5 group-hover:scale-105 transition-transform" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-[10px] group-hover:scale-105 transition-transform">
-                        {m.name?.[0] || "?"}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{m.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{m.relation}</p>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
           </div>
         </aside>
 
@@ -335,6 +302,126 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
               <FamilyPostCard key={post.id} post={post} onTabChange={onTabChange} />
             ))
           )}
+
+          {/* Mobile-only Sidebar Widgets (displayed below the feed) */}
+          <div className="block lg:hidden mt-8 space-y-6">
+            <div className="border-t border-border pt-6 mb-2">
+              <h3 className="font-heading text-lg font-bold text-foreground text-left">Family Highlights</h3>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+              <h3 className="font-heading text-sm font-semibold text-foreground mb-4">Family At a Glance</h3>
+              {(isLoadingMembers || isLoadingBirthdays) ? (
+                <StatsSkeleton />
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {quickStats.map((stat, i) => (
+                    <div key={i} className="flex flex-col items-center text-center p-2 rounded-xl bg-secondary/30">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mb-1.5">
+                        <stat.icon className="w-4 h-4 text-primary" />
+                      </div>
+                      <p className="text-sm font-bold text-foreground leading-none">{stat.value}</p>
+                      <p className="text-[9px] text-muted-foreground mt-1 leading-tight">{stat.label.split(" ")[1] || stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Upcoming Birthdays */}
+            <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+              <h3 className="font-heading text-sm font-semibold text-foreground mb-3">Upcoming Birthdays</h3>
+              <div className="space-y-3">
+                {isLoadingBirthdays ? (
+                  [1, 2, 3].map((i) => <CompactRowSkeleton key={i} />)
+                ) : upcomingBirthdays.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">No upcoming birthdays.</p>
+                ) : (
+                  upcomingBirthdays.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        setSelectedMember(b);
+                        setIsDrawerOpen(true);
+                      }}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/60 transition-all text-left group"
+                    >
+                      {b.avatar ? (
+                        <img
+                          src={b.avatar}
+                          alt={b.name}
+                          className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/10 group-hover:scale-105 transition-transform"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-xs ring-2 ring-primary/5 group-hover:scale-105 transition-transform">
+                          {b.name?.[0] || "?"}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors flex items-center gap-1.5">
+                          {b.name}
+                          {b.relation === 'You' && (
+                            <span className="text-[9px] bg-primary/20 text-primary px-1 rounded font-normal">You</span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {b.ageTurning ? `Turning ${b.ageTurning}` : 'Birthday'} on {new Date(b.nextBirthdayDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap">
+                          {b.daysUntil === 0 ? "Today! 🎂" : b.daysUntil === 1 ? "Tomorrow!" : `in ${b.daysUntil}d`}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Upcoming Gatherings */}
+            <div className="bg-card rounded-2xl border border-border p-5 shadow-sm">
+              <h3 className="font-heading text-sm font-semibold text-foreground mb-3">Upcoming Gatherings</h3>
+              <div className="space-y-3">
+                {isLoadingEvents ? (
+                  [1, 2].map((i) => <CompactRowSkeleton key={i} />)
+                ) : nextEvents.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">No upcoming family events.</p>
+                ) : (
+                  nextEvents.map((evt) => {
+                    const date = new Date(evt.eventDate);
+                    const monthStr = date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+                    const dayStr = date.getDate();
+                    return (
+                      <button
+                        key={evt.id}
+                        onClick={() => onTabChange && onTabChange("events")}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/60 transition-all text-left group"
+                      >
+                        <div className="w-9 h-10 bg-background rounded-lg border border-border overflow-hidden flex flex-col items-center justify-center shrink-0 shadow-inner">
+                          <div className="w-full bg-primary text-[8px] font-bold text-primary-foreground py-0.5 text-center leading-none">
+                            {monthStr}
+                          </div>
+                          <div className="text-sm font-bold text-foreground leading-none py-1">
+                            {dayStr}
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                            {evt.title}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                            {evt.location || "TBD"}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
         </main>
 
         {/* Right Sidebar */}

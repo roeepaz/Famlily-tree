@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, ArrowDown, ArrowLeftRight, Check, X, Share2, Clipboard, Smartphone, Send, Loader2, TreePine, CalendarDays, Archive, Users, ArrowRight, Sparkles } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowLeftRight, Check, X, Clipboard, Send, Loader2, TreePine, CalendarDays, Archive } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -281,8 +281,8 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
 
       {/* Visual Canvas Board */}
       <div 
-        className={`w-full max-w-3xl flex-1 flex flex-col justify-center items-center relative py-6 transition-all duration-500 ease-in-out ${
-          step === "handoff" ? "scale-90 opacity-40 pointer-events-none" : ""
+        className={`w-full max-w-3xl flex-1 flex flex-col justify-center items-center relative py-6 transition-all duration-500 ease-in-out origin-center scale-[0.72] min-[400px]:scale-[0.82] min-[520px]:scale-90 sm:scale-100 ${
+          step === "handoff" ? "scale-[0.6] sm:scale-90 opacity-40 pointer-events-none" : ""
         }`}
       >
         {/* ROW 1: PARENTS (UP) */}

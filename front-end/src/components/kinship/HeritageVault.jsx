@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Search, Plus, BookOpen } from "lucide-react";
+import React, { useState, useMemo, useRef } from "react";
+import { Search, Plus, BookOpen, Camera, Image as ImageIcon, X, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { TimelineSkeleton } from "./SkeletonLoaders";
+import { compressImageToBlob } from "@/lib/imageCompressor";
+import { supabaseClient } from "@/lib/AuthContext";
 
 export default function HeritageVault() {
   const queryClient = useQueryClient();
@@ -24,6 +26,14 @@ export default function HeritageVault() {
   const [newYear, setNewYear] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newImageUrl, setNewImageUrl] = useState("");
+
+  // Photo Upload States
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+
+  // File input references
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   // Query heritage events
   const { data: heritageEvents = [], isLoading } = useQuery({
@@ -44,7 +54,7 @@ export default function HeritageVault() {
       setNewTitle("");
       setNewYear("");
       setNewDescription("");
-      setNewImageUrl("");
+      setNewImageUrl(""); // Clear this so onOpenChange cleanup is bypassed
       setOpen(false);
     },
     onError: (err) => {
@@ -55,6 +65,97 @@ export default function HeritageVault() {
       });
     },
   });
+
+  const handleFileChange = async (e, isCamera = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Security & Type Validations
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file (PNG, JPG, WEBP, GIF).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please select a photo smaller than 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      // 1. Compress Image (resizing to max 1200px and 0.8 quality to preserve space and strip metadata)
+      const compressedFile = await compressImageToBlob(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+      
+      // 2. Upload to Supabase Storage
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+      const randomSuffix = Math.random().toString(36).substring(2, 10);
+      const fileName = `vault_${Date.now()}_${randomSuffix}.${fileExt}`;
+      const filePath = `vault/${fileName}`;
+
+      const { data, error } = await supabaseClient.storage
+        .from('heritage-media')
+        .upload(filePath, compressedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      // 3. Get Public URL
+      const { data: { publicUrl } } = supabaseClient.storage
+        .from('heritage-media')
+        .getPublicUrl(filePath);
+
+      setNewImageUrl(publicUrl);
+      toast({
+        title: "Photo uploaded successfully! 📸",
+        description: "Your photo is ready to be saved with the story.",
+      });
+    } catch (err) {
+      console.error("Failed to upload image:", err);
+      setUploadError("Failed to upload image. Please try again.");
+      toast({
+        title: "Upload failed",
+        description: err.message || "Failed to upload photo. Please check your connection.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      // Clear file inputs so same file can be selected again
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!newImageUrl) return;
+
+    try {
+      const parts = newImageUrl.split('/heritage-media/');
+      if (parts.length > 1) {
+        const filePath = parts[1];
+        await supabaseClient.storage.from('heritage-media').remove([filePath]);
+      }
+    } catch (err) {
+      console.warn("Failed to delete file from storage:", err);
+    }
+    
+    setNewImageUrl("");
+    setUploadError(null);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -137,7 +238,27 @@ export default function HeritageVault() {
               ))}
             </SelectContent>
           </Select>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(val) => {
+            if (!val) {
+              // If user closes dialog manually, clean up any uploaded but unsaved image
+              if (newImageUrl && !addStoryMutation.isSuccess) {
+                const parts = newImageUrl.split('/heritage-media/');
+                if (parts.length > 1) {
+                  const filePath = parts[1];
+                  supabaseClient.storage.from('heritage-media').remove([filePath]).catch(err => {
+                    console.warn("Cleanup failed:", err);
+                  });
+                }
+              }
+              // Reset all form inputs
+              setNewTitle("");
+              setNewYear("");
+              setNewDescription("");
+              setNewImageUrl("");
+              setUploadError(null);
+            }
+            setOpen(val);
+          }}>
             <DialogTrigger asChild>
               <Button className="rounded-xl h-10 px-4 shrink-0">
                 <Plus className="w-4 h-4 mr-1.5" />
@@ -189,21 +310,108 @@ export default function HeritageVault() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="imageUrl">Image URL (Optional)</Label>
-                  <Input
-                    id="imageUrl"
-                    type="url"
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
-                    className="rounded-xl border-border bg-secondary/20 h-10"
+                  <Label>Add Photo (Optional)</Label>
+                  
+                  {/* Hidden standard file inputs */}
+                  <input
+                    type="file"
+                    id="camera-upload"
+                    accept="image/*"
+                    capture="environment"
+                    ref={cameraInputRef}
+                    onChange={(e) => handleFileChange(e, true)}
+                    className="hidden"
                   />
+                  <input
+                    type="file"
+                    id="gallery-upload"
+                    accept="image/*"
+                    ref={galleryInputRef}
+                    onChange={(e) => handleFileChange(e, false)}
+                    className="hidden"
+                  />
+
+                  {/* Upload Zone / Preview Area */}
+                  {newImageUrl ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-border bg-secondary/10 group aspect-video flex items-center justify-center shadow-inner">
+                      <img
+                        src={newImageUrl}
+                        alt="Uploaded preview"
+                        className="w-full h-full object-cover rounded-2xl"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center backdrop-blur-[2px]">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={removePhoto}
+                          className="rounded-xl flex items-center gap-1.5 shadow-lg"
+                        >
+                          <X className="w-4 h-4" />
+                          Remove Photo
+                        </Button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={removePhoto}
+                        className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center transition-colors md:hidden shadow"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : isUploading ? (
+                    <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 flex flex-col items-center justify-center p-8 h-40 animate-pulse">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin mb-2" />
+                      <p className="text-sm font-medium text-primary">Compressing & uploading photo...</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">Stripping location and camera data for privacy</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {/* Desktop layout: standard file select click zone */}
+                      <div 
+                        onClick={() => galleryInputRef.current?.click()}
+                        className="hidden md:flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border hover:border-primary/50 bg-secondary/15 hover:bg-secondary/30 transition-all duration-200 p-6 text-center cursor-pointer group"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center mb-2.5 transition-colors">
+                          <ImageIcon className="w-5 h-5 text-primary" />
+                        </div>
+                        <p className="text-xs font-semibold text-foreground">Click to upload a photo</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">Supports PNG, JPG, WEBP, GIF up to 10MB</p>
+                      </div>
+
+                      {/* Mobile layout: Camera vs Gallery Buttons */}
+                      <div className="grid grid-cols-2 gap-3 md:hidden">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="rounded-xl h-20 flex flex-col gap-1.5 items-center justify-center bg-secondary/10 border-border hover:bg-secondary/20"
+                        >
+                          <Camera className="w-5 h-5 text-primary" />
+                          <span className="text-xs font-medium">Take Photo</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => galleryInputRef.current?.click()}
+                          className="rounded-xl h-20 flex flex-col gap-1.5 items-center justify-center bg-secondary/10 border-border hover:bg-secondary/20"
+                        >
+                          <ImageIcon className="w-5 h-5 text-primary" />
+                          <span className="text-xs font-medium">Photo Library</span>
+                        </Button>
+                      </div>
+
+                      {uploadError && (
+                        <p className="text-xs text-destructive font-medium mt-1">{uploadError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <DialogFooter className="pt-2">
                   <Button type="button" variant="outline" onClick={() => setOpen(false)} className="rounded-xl">
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={addStoryMutation.isPending} className="rounded-xl">
+                  <Button type="submit" disabled={addStoryMutation.isPending || isUploading} className="rounded-xl">
                     {addStoryMutation.isPending ? "Saving..." : "Save Story"}
                   </Button>
                 </DialogFooter>

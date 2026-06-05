@@ -97,3 +97,13 @@
 .animate-bounce-short {
   animation: bounceShort 0.8s ease-in-out;
 }
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

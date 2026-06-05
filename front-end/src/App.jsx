@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Landing from './pages/Landing';
 
 const AuthenticatedApp = () => {
   const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, isProfileIncomplete } = useAuth();
@@ -49,11 +50,11 @@ const AuthenticatedApp = () => {
       {/* Protected Routes */}
       <Route 
         path="/" 
-        element={isAuthenticated ? <Home /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated ? <Home /> : <Landing />} 
       />
       <Route 
         path="*" 
-        element={isAuthenticated ? <PageNotFound /> : <Navigate to="/login" replace />} 
+        element={isAuthenticated ? <PageNotFound /> : <Navigate to="/" replace />} 
       />
     </Routes>
   );

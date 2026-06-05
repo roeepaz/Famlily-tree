@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Calendar, MapPin, Clock, Edit2, Trash2, Check, User, Users } from "lucide-react";
+import { Calendar, MapPin, Clock, Edit2, Trash2, Check, Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
