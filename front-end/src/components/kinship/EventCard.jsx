@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
 import { motion } from "framer-motion";
+import AddToCalendar from "./AddToCalendar";
 
 export default function EventCard({ event, onEdit, onDelete }) {
   const queryClient = useQueryClient();
@@ -145,6 +146,11 @@ export default function EventCard({ event, onEdit, onDelete }) {
                 <span className="truncate" title={event.location}>{event.location}</span>
               </div>
             )}
+          </div>
+
+          {/* Add to Calendar Link */}
+          <div className="mt-3 flex justify-start">
+            <AddToCalendar event={event} />
           </div>
 
           {/* Description */}

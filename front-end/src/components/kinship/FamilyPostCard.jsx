@@ -2,13 +2,16 @@ import React, { useState } from "react";
 import { Heart, MessageCircle, Share2, Sun, Trophy, BookHeart, Calendar } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { POST_TYPE_CONFIG } from "@/lib/mockData";
 import { formatDistanceToNow } from "date-fns";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/AuthContext";
+import EventPostDetails from "./post/EventPostDetails";
+import ReactionsHoverBar from "./post/ReactionsHoverBar";
+import CommentItem from "./post/CommentItem";
+import CommentsSection from "./post/CommentsSection";
 
 const typeIcons = { daily: Sun, milestone: Trophy, memory: BookHeart, event: Calendar };
 
@@ -26,8 +29,14 @@ const REACTION_CONFIG = {
 export default function FamilyPostCard({ post, onTabChange }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  const { data: eventDetails } = useQuery({
+    queryKey: ["event", post.eventId],
+    queryFn: () => api.getEvent(post.eventId),
+    enabled: !!post.eventId,
+  });
+
   const [showComments, setShowComments] = useState(false);
-  const [commentText, setCommentText] = useState("");
   const [showReactions, setShowReactions] = useState(false);
   const reactionsTimeoutRef = React.useRef(null);
 
@@ -38,13 +47,9 @@ export default function FamilyPostCard({ post, onTabChange }) {
   const toggleReactionMutation = useMutation({
     mutationFn: (emoji) => api.toggleReaction(post.id, emoji),
     onMutate: async (newEmoji) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["posts"] });
-
-      // Snapshot the previous posts value
       const previousPosts = queryClient.getQueryData(["posts"]);
 
-      // Optimistically update the posts cache
       queryClient.setQueryData(["posts"], (oldPosts) => {
         if (!oldPosts) return [];
         return oldPosts.map((p) => {
@@ -54,7 +59,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
           let newUserReaction = null;
           let newReactions = p.reactions ? [...p.reactions] : [];
 
-          // 1. Remove previous user reaction if it exists
           if (currentReaction) {
             newReactions = newReactions.map((r) => {
               if (r.emoji === currentReaction) {
@@ -64,7 +68,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
             }).filter((r) => r.count > 0);
           }
 
-          // 2. Add new reaction if it's different from the current one
           if (currentReaction !== newEmoji) {
             newUserReaction = newEmoji;
             const existingIdx = newReactions.findIndex((r) => r.emoji === newEmoji);
@@ -89,7 +92,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
       return { previousPosts };
     },
     onError: (err, newEmoji, context) => {
-      // Rollback to previous state on failure
       if (context?.previousPosts) {
         queryClient.setQueryData(["posts"], context.previousPosts);
       }
@@ -100,7 +102,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
       });
     },
     onSettled: () => {
-      // Sync cache with server state in the background
       queryClient.invalidateQueries({ queryKey: ["posts"] });
     }
   });
@@ -108,13 +109,9 @@ export default function FamilyPostCard({ post, onTabChange }) {
   const addCommentMutation = useMutation({
     mutationFn: (text) => api.addComment(post.id, text),
     onMutate: async (newText) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["posts"] });
-
-      // Snapshot the previous posts value
       const previousPosts = queryClient.getQueryData(["posts"]);
 
-      // Optimistically update
       queryClient.setQueryData(["posts"], (oldPosts) => {
         if (!oldPosts) return [];
         return oldPosts.map((p) => {
@@ -139,7 +136,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
       return { previousPosts };
     },
     onError: (err, newText, context) => {
-      // Rollback on failure
       if (context?.previousPosts) {
         queryClient.setQueryData(["posts"], context.previousPosts);
       }
@@ -150,7 +146,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
       });
     },
     onSettled: () => {
-      // Sync cache with server state in the background
       queryClient.invalidateQueries({ queryKey: ["posts"] });
     }
   });
@@ -162,16 +157,8 @@ export default function FamilyPostCard({ post, onTabChange }) {
     toggleReactionMutation.mutate(emoji);
   };
 
-  const handleAddComment = () => {
-    if (!commentText.trim()) return;
-    addCommentMutation.mutate(commentText.trim());
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddComment();
-    }
+  const handleAddComment = (text) => {
+    addCommentMutation.mutate(text);
   };
 
   const handleMouseEnter = () => {
@@ -185,7 +172,7 @@ export default function FamilyPostCard({ post, onTabChange }) {
   const handleMouseLeave = () => {
     reactionsTimeoutRef.current = setTimeout(() => {
       setShowReactions(false);
-    }, 400); // 400ms delay to smoothly move between components
+    }, 400);
   };
 
   const hasReacted = !!post.userReaction;
@@ -222,51 +209,8 @@ export default function FamilyPostCard({ post, onTabChange }) {
 
       {/* Content */}
       <div className="px-5 pb-3">
-        {post.type === 'event' ? (
-          <div className="bg-secondary/40 rounded-xl p-4 border border-border/50 space-y-3 shadow-inner">
-            <div className="flex items-start gap-2.5">
-              <span className="text-2xl shrink-0">📢</span>
-              <div className="min-w-0 flex-1">
-                <span className="text-[10px] font-bold text-primary tracking-wider uppercase">
-                  Gathering Scheduled
-                </span>
-                <h3 className="font-heading text-lg font-extrabold text-foreground leading-snug mt-0.5">
-                  {post.content.split('\n')[0].replace('📢 New Family Event Scheduled: ', '').replace(/\*\*/g, '')}
-                </h3>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground pt-2.5 border-t border-border/40">
-              {post.content.split('\n').map((line, idx) => {
-                if (line.includes('🗓️')) {
-                  return (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      <span className="shrink-0 text-base">🗓️</span>
-                      <span className="font-semibold text-foreground/90">{line.replace('🗓️ **Date:** ', '').replace(/\*\*/g, '')}</span>
-                    </div>
-                  );
-                }
-                if (line.includes('📍')) {
-                  return (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      <span className="shrink-0 text-base">📍</span>
-                      <span className="font-semibold text-foreground/90">{line.replace('📍 **Location:** ', '').replace(/\*\*/g, '')}</span>
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
-
-            {/* Description details */}
-            {post.content.split('\n\n')[1] && (
-              <div className="bg-card/70 p-3 rounded-lg border border-border/30">
-                <p className="text-xs text-foreground/80 leading-relaxed italic whitespace-pre-line">
-                  "{post.content.split('\n\n')[1]}"
-                </p>
-              </div>
-            )}
-          </div>
+        {post.type === "event" ? (
+          <EventPostDetails post={post} eventDetails={eventDetails} onTabChange={onTabChange} />
         ) : (
           <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">{post.content}</p>
         )}
@@ -280,28 +224,6 @@ export default function FamilyPostCard({ post, onTabChange }) {
             alt="Post media"
             className="w-full rounded-xl object-cover max-h-80"
           />
-        </div>
-      )}
-
-      {/* Event Link Banner */}
-      {post.type === 'event' && (
-        <div className="px-5 pb-3">
-          <div className="p-4 bg-primary/5 border border-primary/10 rounded-xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-primary shrink-0" />
-              <div>
-                <h4 className="text-xs font-bold text-foreground">Family Event Announcement</h4>
-                <p className="text-[10px] text-muted-foreground">Check options, dates, and RSVP now.</p>
-              </div>
-            </div>
-            <Button
-              onClick={() => onTabChange && onTabChange("events")}
-              size="sm"
-              className="text-[10px] px-3.5 h-8 bg-primary hover:bg-primary/95 text-primary-foreground rounded-lg shadow-sm"
-            >
-              View Event & RSVP
-            </Button>
-          </div>
         </div>
       )}
 
@@ -362,30 +284,17 @@ export default function FamilyPostCard({ post, onTabChange }) {
             <span className="text-[10px]">▼</span>
           </button>
 
-          {/* Facebook-like Hover reaction bar */}
-          {showReactions && (
-            <div 
-              className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-popover border border-border rounded-full py-1.5 px-3.5 shadow-xl flex items-center gap-3 z-50 animate-in fade-in-50 slide-in-from-bottom-2 duration-200"
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
-            >
-              {LOVE_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleReact(emoji);
-                    setShowReactions(false);
-                  }}
-                  className="text-2xl hover:scale-130 active:scale-95 transition-transform duration-150 focus:outline-none"
-                  title={REACTION_CONFIG[emoji]?.label}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
+          <ReactionsHoverBar
+            showReactions={showReactions}
+            loveEmojis={LOVE_EMOJIS}
+            reactionConfig={REACTION_CONFIG}
+            onReact={(emoji) => {
+              handleReact(emoji);
+              setShowReactions(false);
+            }}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          />
         </div>
 
         <Button
@@ -407,67 +316,26 @@ export default function FamilyPostCard({ post, onTabChange }) {
       {!showComments && post.comments && post.comments.length > 0 && (
         <div className="px-5 pb-3 border-t border-border/20 pt-3 bg-secondary/5">
           <div className="flex items-start gap-2.5">
-            <Avatar className="w-7 h-7">
-              <AvatarImage src={post.comments[0].authorAvatar} alt={post.comments[0].authorName} />
-              <AvatarFallback>{post.comments[0].authorName[0]}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 bg-secondary/30 rounded-xl px-3 py-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground">{post.comments[0].authorName}</span>
-                {post.comments.length > 1 && (
-                  <button 
-                    onClick={() => setShowComments(true)}
-                    className="text-[10px] text-primary hover:underline font-medium"
-                  >
-                    View all {post.comments.length} replies
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{post.comments[0].text}</p>
-            </div>
+            <CommentItem comment={post.comments[0]} bgClass="bg-secondary/30" />
+            {post.comments.length > 1 && (
+              <button 
+                onClick={() => setShowComments(true)}
+                className="text-[10px] text-primary hover:underline font-medium ml-auto mt-2 whitespace-nowrap"
+              >
+                View all {post.comments.length}
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Comments */}
+      {/* Comments Drawer/List */}
       {showComments && (
-        <div className="px-5 pb-4 border-t border-border pt-3 space-y-3 bg-secondary/10">
-          {post.comments && post.comments.length > 0 && (
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-              {post.comments.map((comment) => (
-                <div key={comment.id} className="flex items-start gap-2.5">
-                  <Avatar className="w-7 h-7">
-                    <AvatarImage src={comment.authorAvatar} alt={comment.authorName} />
-                    <AvatarFallback>{comment.authorName[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 bg-secondary/50 rounded-xl px-3 py-2">
-                    <span className="text-xs font-semibold text-foreground">{comment.authorName}</span>
-                    <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">{comment.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-2 mt-2">
-            <Input
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Write a comment..."
-              className="text-xs rounded-xl bg-secondary/40 border-none h-8 focus-visible:ring-1 focus-visible:ring-primary"
-              disabled={addCommentMutation.isPending}
-            />
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              onClick={handleAddComment}
-              disabled={addCommentMutation.isPending || !commentText.trim()}
-              className="text-primary h-8 px-3 text-xs font-medium hover:bg-secondary/40"
-            >
-              {addCommentMutation.isPending ? "Replying..." : "Reply"}
-            </Button>
-          </div>
-        </div>
+        <CommentsSection
+          post={post}
+          onAddComment={handleAddComment}
+          isPending={addCommentMutation.isPending}
+        />
       )}
     </div>
   );
