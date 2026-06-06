@@ -27,6 +27,183 @@ function mapProfileToFrontend(p: any, relationLabel?: string, genLabel?: string)
   };
 }
 
+async function getParents(profileId: string): Promise<string[]> {
+  const rels = await prisma.relationship.findMany({
+    where: {
+      isPending: false,
+      OR: [
+        { personId: profileId, kinshipType: KinshipDesignation.PARENT },
+        { relativeId: profileId, kinshipType: KinshipDesignation.CHILD }
+      ]
+    }
+  });
+  return rels.map(r => r.kinshipType === KinshipDesignation.PARENT ? r.relativeId : r.personId);
+}
+
+async function getChildren(profileId: string): Promise<string[]> {
+  const rels = await prisma.relationship.findMany({
+    where: {
+      isPending: false,
+      OR: [
+        { personId: profileId, kinshipType: KinshipDesignation.CHILD },
+        { relativeId: profileId, kinshipType: KinshipDesignation.PARENT }
+      ]
+    }
+  });
+  return rels.map(r => r.kinshipType === KinshipDesignation.CHILD ? r.relativeId : r.personId);
+}
+
+async function getSpouses(profileId: string): Promise<string[]> {
+  const rels = await prisma.relationship.findMany({
+    where: {
+      isPending: false,
+      kinshipType: KinshipDesignation.SPOUSE,
+      OR: [
+        { personId: profileId },
+        { relativeId: profileId }
+      ]
+    }
+  });
+  return rels.map(r => r.personId === profileId ? r.relativeId : r.personId);
+}
+
+export async function autoLinkRelationships(
+  personId: string,
+  relativeId: string,
+  kinshipType: KinshipDesignation
+): Promise<void> {
+  if (kinshipType === KinshipDesignation.PARENT) {
+    const childId = personId;
+    const parentId = relativeId;
+
+    // 1. Link Parent to all siblings of Child
+    const parentIds = await getParents(childId);
+    const siblingIdsSet = new Set<string>();
+    for (const pId of parentIds) {
+      if (pId === parentId) continue;
+      const childrenOfParent = await getChildren(pId);
+      for (const cId of childrenOfParent) {
+        if (cId !== childId) {
+          siblingIdsSet.add(cId);
+        }
+      }
+    }
+
+    for (const siblingId of siblingIdsSet) {
+      await prisma.relationship.upsert({
+        where: {
+          unique_adjacency_constraint: {
+            personId: siblingId,
+            relativeId: parentId,
+            kinshipType: KinshipDesignation.PARENT
+          }
+        },
+        update: {},
+        create: {
+          personId: siblingId,
+          relativeId: parentId,
+          kinshipType: KinshipDesignation.PARENT,
+          isPending: false
+        }
+      });
+    }
+
+    // 2. Link Parent as spouse to all other parents of Child
+    for (const otherParentId of parentIds) {
+      if (otherParentId === parentId) continue;
+      await prisma.relationship.upsert({
+        where: {
+          unique_adjacency_constraint: {
+            personId: parentId,
+            relativeId: otherParentId,
+            kinshipType: KinshipDesignation.SPOUSE
+          }
+        },
+        update: {},
+        create: {
+          personId: parentId,
+          relativeId: otherParentId,
+          kinshipType: KinshipDesignation.SPOUSE,
+          isPending: false
+        }
+      });
+    }
+  }
+
+  else if (kinshipType === KinshipDesignation.CHILD) {
+    const parentId = personId;
+    const childId = relativeId;
+
+    // 1. Link Child to all spouses of Parent
+    const spouseIds = await getSpouses(parentId);
+    for (const spouseId of spouseIds) {
+      await prisma.relationship.upsert({
+        where: {
+          unique_adjacency_constraint: {
+            personId: childId,
+            relativeId: spouseId,
+            kinshipType: KinshipDesignation.PARENT
+          }
+        },
+        update: {},
+        create: {
+          personId: childId,
+          relativeId: spouseId,
+          kinshipType: KinshipDesignation.PARENT,
+          isPending: false
+        }
+      });
+    }
+  }
+
+  else if (kinshipType === KinshipDesignation.SPOUSE) {
+    const spouse1Id = personId;
+    const spouse2Id = relativeId;
+
+    // 1. Link spouse2 to all children of spouse1
+    const spouse1Children = await getChildren(spouse1Id);
+    for (const childId of spouse1Children) {
+      await prisma.relationship.upsert({
+        where: {
+          unique_adjacency_constraint: {
+            personId: childId,
+            relativeId: spouse2Id,
+            kinshipType: KinshipDesignation.PARENT
+          }
+        },
+        update: {},
+        create: {
+          personId: childId,
+          relativeId: spouse2Id,
+          kinshipType: KinshipDesignation.PARENT,
+          isPending: false
+        }
+      });
+    }
+
+    // 2. Link spouse1 to all children of spouse2
+    const spouse2Children = await getChildren(spouse2Id);
+    for (const childId of spouse2Children) {
+      await prisma.relationship.upsert({
+        where: {
+          unique_adjacency_constraint: {
+            personId: childId,
+            relativeId: spouse1Id,
+            kinshipType: KinshipDesignation.PARENT
+          }
+        },
+        update: {},
+        create: {
+          personId: childId,
+          relativeId: spouse1Id,
+          kinshipType: KinshipDesignation.PARENT,
+          isPending: false
+        }
+      });
+    }
+  }
+}
+
 export async function getMe(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const user = req.user;
@@ -275,6 +452,9 @@ export async function createRelationship(req: AuthenticatedRequest, res: Respons
     // Invalidate circle cache for both affected users
     invalidateCircleCache(person_id, relative_id, user.id);
 
+    // Auto-link inferred relationships
+    await autoLinkRelationships(person_id, relative_id, relationship_type as KinshipDesignation);
+
     res.status(201).json(relation);
   } catch (error) {
     console.error('Error in createRelationship:', error);
@@ -425,6 +605,9 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
         }
       });
 
+      // Auto-link inferred relationships
+      await autoLinkRelationships(user.id, placeholder.id, relationship_type as KinshipDesignation);
+
       // Send invitation email asynchronously (don't block the response)
       sendInvitationEmail(
         targetEmail,
@@ -526,6 +709,9 @@ export async function respondToRequest(req: AuthenticatedRequest, res: Response)
         where: { id },
         data: { isPending: false }
       });
+
+      // Auto-link inferred relationships when accepted
+      await autoLinkRelationships(relationship.personId, relationship.relativeId, relationship.kinshipType);
 
       // 2. Merge their family trees if they are in different ones
       const sender = relationship.person;

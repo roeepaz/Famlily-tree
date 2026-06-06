@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { api } from '@/lib/api';
 import { Heart, User, Mail, Lock, Loader2, AlertCircle, Sparkles, Phone, MapPin, Calendar, Users, Camera, X, Check } from 'lucide-react';
 import { compressImage } from '@/lib/imageCompressor';
+import InvitePreviewBanner from './register/InvitePreviewBanner';
+import PasswordChecker from './register/PasswordChecker';
 
 const PASSWORD_RULES = [
   { id: 'length', label: '8+ characters', test: (pw) => pw.length >= 8 },
@@ -242,43 +244,8 @@ const Register = () => {
               </div>
             )}
 
-            {!isLoadingPreview && invitePreview && (
-              <div className="mb-6 p-4 bg-gradient-to-r from-teal-500/10 to-cyan-500/10 border border-teal-500/20 rounded-2xl text-left">
-                <div className="flex items-center gap-2 text-xs font-semibold text-teal-600 dark:text-teal-400 mb-1">
-                  <Sparkles className="w-4 h-4 text-teal-500 animate-pulse" />
-                  You've Been Invited!
-                </div>
-                <h3 className="text-sm font-bold text-slate-800 leading-tight">
-                  Hi {invitePreview.inviteeName},
-                </h3>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Your family member <strong>{invitePreview.creatorName}</strong> has started your private family circle: <span className="font-semibold text-teal-600">{invitePreview.treeName}</span>. Look who is already here:
-                </p>
-
-                {/* Tree preview snippet */}
-                <div className="mt-3.5 flex flex-wrap gap-2.5 justify-center p-3 bg-slate-50/80 border border-slate-100 rounded-xl max-h-[160px] overflow-y-auto">
-                  {invitePreview.profiles.map(p => (
-                    <div 
-                      key={p.id} 
-                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[11px] font-medium leading-tight shadow-sm ${
-                        p.relation === 'You' 
-                          ? 'bg-teal-50 border-teal-200 text-teal-800' 
-                          : 'bg-white border-slate-100 text-slate-700'
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                        p.relation === 'You' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {p.name[0]}
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold truncate max-w-[90px]">{p.name}</p>
-                        <p className="text-[9px] text-slate-400 font-normal">{p.relation}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {!isLoadingPreview && (
+              <InvitePreviewBanner invitePreview={invitePreview} />
             )}
 
             <div className="flex flex-col gap-2 mb-4">
@@ -508,44 +475,12 @@ const Register = () => {
                 </div>
                 
                 {/* Password Requirements Popover / Checklist */}
-                {(isPasswordFocused || (password.length > 0 && !isPasswordValid)) && (
-                  <div className="mt-2.5 p-3.5 bg-slate-50/80 border border-slate-100 rounded-2xl transition-all duration-300 ease-in-out shadow-inner">
-                    <p className="text-[11px] font-semibold text-slate-500 mb-2">Password Requirements</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {PASSWORD_RULES.map((rule) => {
-                        const isMet = rule.test(password);
-                        return (
-                          <div key={rule.id} className="flex items-center gap-2">
-                            <div className={`flex items-center justify-center w-4 h-4 rounded-full transition-all duration-200 ${
-                              isMet 
-                                ? 'bg-emerald-100 text-emerald-600' 
-                                : password.length > 0 
-                                  ? 'bg-rose-100 text-rose-600' 
-                                  : 'bg-slate-100 text-slate-400'
-                            }`}>
-                              {isMet ? (
-                                <Check className="w-2.5 h-2.5 stroke-[3]" />
-                              ) : password.length > 0 ? (
-                                <X className="w-2.5 h-2.5 stroke-[3]" />
-                              ) : (
-                                <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                              )}
-                            </div>
-                            <span className={`text-[11px] transition-colors duration-200 ${
-                              isMet 
-                                ? 'text-emerald-700 font-medium' 
-                                : password.length > 0 
-                                  ? 'text-rose-600' 
-                                  : 'text-slate-500'
-                            }`}>
-                              {rule.label}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                <PasswordChecker
+                  password={password}
+                  isPasswordFocused={isPasswordFocused}
+                  isPasswordValid={isPasswordValid}
+                  passwordRules={PASSWORD_RULES}
+                />
               </div>
 
               <div>
