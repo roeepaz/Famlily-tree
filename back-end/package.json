@@ -4,7 +4,9 @@
   "description": "Backend API for Kinship family tree and social app",
   "main": "dist/app.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "prebuild": "prisma generate",
     "build": "tsc",
     "start": "node dist/app.js",
     "prisma:generate": "prisma generate",
