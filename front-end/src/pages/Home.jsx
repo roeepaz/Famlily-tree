@@ -22,7 +22,7 @@ const views = {
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState("hub");
+  const [activeTab, setActiveTab] = useState("tree");
   const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalAnchorId, setAddModalAnchorId] = useState(null);
