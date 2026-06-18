@@ -123,7 +123,7 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!firstName || !lastName || !email || !password || !confirmPassword || !familyBranchName || !birthDate || !phone) {
+    if (!firstName || !lastName || !email || !password || !confirmPassword || !familyBranchName || !birthDate) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -403,17 +403,16 @@ const Register = () => {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                  Phone Number
+                  Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     type="tel"
-                    placeholder="+1 (555) 019-2834"
+                    placeholder="+1 (555) 019-2834 (Optional)"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full pl-12 pr-4 py-3 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-teal-500 focus:bg-white rounded-2xl text-slate-800 text-sm outline-none transition-all duration-200"
-                    required
                   />
                 </div>
               </div>

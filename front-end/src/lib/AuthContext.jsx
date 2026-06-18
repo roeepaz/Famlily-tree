@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
         profile.name.toLowerCase() === 'first name last name' || 
         profile.name.toLowerCase().startsWith('first name')
       );
-      if (!profile.birthYear || !profile.phone || isDefaultName) {
+      if (!profile.birthYear || isDefaultName) {
         setIsProfileIncomplete(true);
       } else {
         setIsProfileIncomplete(false);

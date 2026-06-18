@@ -42,6 +42,7 @@ model Profile {
   lastName         String    @map("last_name") @db.VarChar(100)
   avatarUrl        String?   @map("avatar_url") @db.Text
   birthDate        DateTime? @map("birth_date") @db.Date
+  deathDate        DateTime? @map("death_date") @db.Date
   isDeceased       Boolean   @default(false) @map("is_deceased")
   isActive         Boolean   @default(false) @map("is_active")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
@@ -52,6 +53,15 @@ model Profile {
   birthYear        Int?      @map("birth_year")
   deathYear        Int?      @map("death_year")
   familyBranchName String?   @map("family_branch_name") @db.VarChar(100)
+
+  // Hebrew calendar fields
+  hebrewBirthDay   Int?      @map("hebrew_birth_day")
+  hebrewBirthMonth Int?      @map("hebrew_birth_month")
+  hebrewBirthYear  Int?      @map("hebrew_birth_year")
+  hebrewDeathDay   Int?      @map("hebrew_death_day")
+  hebrewDeathMonth Int?      @map("hebrew_death_month")
+  hebrewDeathYear  Int?      @map("hebrew_death_year")
+  burialPlace      String?   @map("burial_place") @db.VarChar(255)
 
   familyTree          FamilyTree?    @relation(fields: [treeId], references: [id], onDelete: SetNull)
   sourceRelationships Relationship[] @relation("OriginatingNode")

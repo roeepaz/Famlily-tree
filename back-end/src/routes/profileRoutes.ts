@@ -8,6 +8,7 @@ import {
   updateProfile,
   createRelationship,
   deleteRelationship,
+  deleteProfile,
   connectExistingByEmail,
   getPendingRequests,
   respondToRequest,
@@ -37,6 +38,7 @@ router.get('/:id/activity', getProfileActivity);
 router.get('/:id', getProfileById);
 router.post('/', createProfile);
 router.put('/:id', updateProfile);
+router.delete('/:id', deleteProfile);
 router.post('/relationships', createRelationship);
 router.delete('/relationships/:id', deleteRelationship);
 

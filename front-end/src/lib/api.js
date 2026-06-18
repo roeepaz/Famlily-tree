@@ -48,7 +48,7 @@ export const api = {
     body: JSON.stringify({ inviteId }),
   }),
   getCircle: () => apiFetch('/profiles/circle'),
-  getUpcomingBirthdays: () => apiFetch('/profiles/upcoming-birthdays'),
+  getUpcomingBirthdays: (calendarType = 'gregorian') => apiFetch(`/profiles/upcoming-birthdays?calendarType=${calendarType}`),
   getProfile: (id) => apiFetch(`/profiles/${id}`),
   getProfileActivity: (id) => apiFetch(`/profiles/${id}/activity`),
   createProfile: (profileData) => apiFetch('/profiles', {
@@ -58,6 +58,9 @@ export const api = {
   updateProfile: (id, profileData) => apiFetch(`/profiles/${id}`, {
     method: 'PUT',
     body: JSON.stringify(profileData),
+  }),
+  deleteProfile: (id) => apiFetch(`/profiles/${id}`, {
+    method: 'DELETE',
   }),
   createRelationship: (relationshipData) => apiFetch('/profiles/relationships', {
     method: 'POST',

@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Users, CalendarHeart, BookOpen } from "lucide-react";
 import ShareUpdateCard from "./ShareUpdateCard";
 import FamilyPostCard from "./FamilyPostCard";
 import ProfileDrawer from "./ProfileDrawer";
@@ -8,7 +7,6 @@ import { api } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
 import { FeedSkeleton } from "./SkeletonLoaders";
 import WelcomePromo from "./onboarding/WelcomePromo";
-import FamilyAtGlanceWidget from "./widgets/FamilyAtGlanceWidget";
 import UpcomingBirthdaysWidget from "./widgets/UpcomingBirthdaysWidget";
 import UpcomingGatheringsWidget from "./widgets/UpcomingGatheringsWidget";
 import FamilyQuoteWidget from "./widgets/FamilyQuoteWidget";
@@ -29,9 +27,11 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
     queryFn: api.getCircle,
   });
 
+  const [calendarType, setCalendarType] = useState("gregorian");
+
   const { data: upcomingBirthdays = [], isLoading: isLoadingBirthdays } = useQuery({
-    queryKey: ["upcomingBirthdays"],
-    queryFn: api.getUpcomingBirthdays,
+    queryKey: ["upcomingBirthdays", calendarType],
+    queryFn: () => api.getUpcomingBirthdays(calendarType),
   });
 
   const { data: heritageEvents = [] } = useQuery({
@@ -78,11 +78,7 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
     });
   };
 
-  const quickStats = [
-    { icon: Users, label: "Family Members", value: isLoadingMembers ? "..." : familyMembers.length.toString() },
-    { icon: CalendarHeart, label: "Upcoming Birthdays", value: isLoadingBirthdays ? "..." : upcomingBirthdays.length.toString() },
-    { icon: BookOpen, label: "Heritage Stories", value: heritageEvents.length.toString() },
-  ];
+
 
   if (!isLoadingMembers && familyMembers.length <= 1) {
     return (
@@ -101,17 +97,8 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Sidebar */}
-        <aside className="hidden lg:block lg:col-span-3 space-y-5">
-          <FamilyAtGlanceWidget
-            isLoading={isLoadingMembers || isLoadingBirthdays}
-            quickStats={quickStats}
-            onLaunchSpark={onLaunchSpark}
-          />
-        </aside>
-
         {/* Main Feed */}
-        <main className="lg:col-span-6 space-y-5">
+        <main className="lg:col-span-9 space-y-5">
           {familyMembers.length <= 1 && (
             <div className="bg-gradient-to-br from-teal-500/10 via-cyan-500/5 to-slate-900/10 border-2 border-teal-500/30 p-6 rounded-3xl shadow-md text-left relative overflow-hidden">
               <div className="absolute right-0 top-0 w-24 h-24 bg-teal-500/5 rounded-full filter blur-xl pointer-events-none" />
@@ -136,6 +123,25 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
             </div>
           )}
 
+          {/* Mobile-only Top Mini Calendar & Gatherings Alerts */}
+          <div className="block lg:hidden space-y-2.5 mb-2.5">
+            <UpcomingBirthdaysWidget
+              isLoading={isLoadingBirthdays}
+              upcomingBirthdays={upcomingBirthdays}
+              onSelectMember={handleSelectMember}
+              calendarType={calendarType}
+              setCalendarType={setCalendarType}
+              layout="minibar"
+            />
+            <UpcomingGatheringsWidget
+              isLoading={isLoadingEvents}
+              nextEvents={nextEvents}
+              events={events}
+              onTabChange={onTabChange}
+              layout="minibar"
+            />
+          </div>
+
           <ShareUpdateCard onShare={handleSharePost} />
           {isLoadingPosts ? (
             <FeedSkeleton count={3} />
@@ -148,35 +154,6 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
               <FamilyPostCard key={post.id} post={post} onTabChange={onTabChange} />
             ))
           )}
-
-          {/* Mobile-only Sidebar Widgets (displayed below the feed) */}
-          <div className="block lg:hidden mt-8 space-y-6">
-            <div className="border-t border-border pt-6 mb-2">
-              <h3 className="font-heading text-lg font-bold text-foreground text-left">Family Highlights</h3>
-            </div>
-
-            {/* Quick Stats */}
-            <FamilyAtGlanceWidget
-              isLoading={isLoadingMembers || isLoadingBirthdays}
-              quickStats={quickStats}
-              onLaunchSpark={onLaunchSpark}
-              isMobile={true}
-            />
-
-            {/* Upcoming Birthdays */}
-            <UpcomingBirthdaysWidget
-              isLoading={isLoadingBirthdays}
-              upcomingBirthdays={upcomingBirthdays}
-              onSelectMember={handleSelectMember}
-            />
-
-            {/* Upcoming Gatherings */}
-            <UpcomingGatheringsWidget
-              isLoading={isLoadingEvents}
-              nextEvents={nextEvents}
-              onTabChange={onTabChange}
-            />
-          </div>
         </main>
 
         {/* Right Sidebar */}
@@ -185,12 +162,17 @@ export default function FamilyHub({ onTabChange, onLaunchSpark }) {
             isLoading={isLoadingBirthdays}
             upcomingBirthdays={upcomingBirthdays}
             onSelectMember={handleSelectMember}
+            calendarType={calendarType}
+            setCalendarType={setCalendarType}
+            layout="sidebar"
           />
 
           <UpcomingGatheringsWidget
             isLoading={isLoadingEvents}
             nextEvents={nextEvents}
+            events={events}
             onTabChange={onTabChange}
+            layout="sidebar"
           />
 
           <FamilyQuoteWidget />

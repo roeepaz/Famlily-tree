@@ -6,6 +6,7 @@ import { invalidateCircleCache } from '../services/circleCache';
 import { KinshipDesignation } from '@prisma/client';
 import { sendConnectionRequestEmail, sendInvitationEmail } from '../services/emailService';
 import { randomUUID } from 'crypto';
+import { convertGregorianToHebrew, getNextHebrewAnniversary, formatHebrewDateString, parseHebrewDateString } from '../services/hebrewDateService';
 
 /**
  * Helper to map DB profile to frontend representation
@@ -19,11 +20,23 @@ function mapProfileToFrontend(p: any, relationLabel?: string, genLabel?: string)
     location: p.location || '',
     email: p.email || '',
     phone: p.phone || '',
+    birthDate: p.birthDate ? p.birthDate.toISOString().split('T')[0] : null,
+    deathDate: p.deathDate ? p.deathDate.toISOString().split('T')[0] : null,
     birthYear: p.birthYear || (p.birthDate ? new Date(p.birthDate).getFullYear() : null),
     isDeceased: p.isDeceased,
     deathYear: p.deathYear || null,
     generation: genLabel || 'siblings',
-    relation: relationLabel || 'Relative'
+    relation: relationLabel || 'Relative',
+    hebrewBirthDay: p.hebrewBirthDay,
+    hebrewBirthMonth: p.hebrewBirthMonth,
+    hebrewBirthYear: p.hebrewBirthYear,
+    hebrewDeathDay: p.hebrewDeathDay,
+    hebrewDeathMonth: p.hebrewDeathMonth,
+    hebrewDeathYear: p.hebrewDeathYear,
+    hebrewBirthDate: p.hebrewBirthDay && p.hebrewBirthMonth ? formatHebrewDateString(p.hebrewBirthDay, p.hebrewBirthMonth, p.hebrewBirthYear, false) : null,
+    hebrewDeathDate: p.hebrewDeathDay && p.hebrewDeathMonth ? formatHebrewDateString(p.hebrewDeathDay, p.hebrewDeathMonth, p.hebrewDeathYear, false) : null,
+    burialPlace: p.burialPlace || '',
+    isActive: !!p.isActive
   };
 }
 
@@ -244,7 +257,21 @@ export async function getCircle(req: AuthenticatedRequest, res: Response): Promi
       .filter(p => !p.firstName.startsWith("Parent of"))
       .map(p => {
         const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
-        return mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
+        const base = mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
+        
+        // Find spouse in relationships
+        const spouseRel = relationships.find(
+          r => r.kinshipType === KinshipDesignation.SPOUSE && 
+               (r.personId === p.id || r.relativeId === p.id)
+        );
+        const spouseId = spouseRel 
+          ? (spouseRel.personId === p.id ? spouseRel.relativeId : spouseRel.personId)
+          : null;
+
+        return {
+          ...base,
+          spouseId
+        };
       });
 
     res.json(frontendProfiles);
@@ -294,6 +321,7 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       last_name, 
       avatar_url, 
       birth_date, 
+      death_date,
       is_deceased, 
       family_branch_name,
       email,
@@ -301,6 +329,15 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       location,
       birth_year,
       death_year,
+      hebrew_birth_day,
+      hebrew_birth_month,
+      hebrew_birth_year,
+      hebrew_death_day,
+      hebrew_death_month,
+      hebrew_death_year,
+      hebrew_birth_date,
+      hebrew_death_date,
+      burial_place,
       treeId
     } = req.body;
 
@@ -317,6 +354,51 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
       finalTreeId = tree.id;
     }
 
+    // Auto-compute Hebrew dates if Gregorian is provided but Hebrew is not
+    let hBirthDay = hebrew_birth_day ? parseInt(hebrew_birth_day, 10) : null;
+    let hBirthMonth = hebrew_birth_month ? parseInt(hebrew_birth_month, 10) : null;
+    let hBirthYear = hebrew_birth_year ? parseInt(hebrew_birth_year, 10) : null;
+
+    if (hebrew_birth_date) {
+      const parsed = parseHebrewDateString(hebrew_birth_date);
+      if (parsed) {
+        hBirthDay = parsed.day;
+        hBirthMonth = parsed.month;
+        hBirthYear = parsed.year;
+      }
+    } else if (birth_date && (!hBirthDay || !hBirthMonth)) {
+      try {
+        const computed = await convertGregorianToHebrew(new Date(birth_date));
+        hBirthDay = computed.day;
+        hBirthMonth = computed.month;
+        hBirthYear = computed.year;
+      } catch (err) {
+        console.error('Failed to auto-convert birth date to Hebrew:', err);
+      }
+    }
+
+    let hDeathDay = hebrew_death_day ? parseInt(hebrew_death_day, 10) : null;
+    let hDeathMonth = hebrew_death_month ? parseInt(hebrew_death_month, 10) : null;
+    let hDeathYear = hebrew_death_year ? parseInt(hebrew_death_year, 10) : null;
+
+    if (hebrew_death_date) {
+      const parsed = parseHebrewDateString(hebrew_death_date);
+      if (parsed) {
+        hDeathDay = parsed.day;
+        hDeathMonth = parsed.month;
+        hDeathYear = parsed.year;
+      }
+    } else if (death_date && (!hDeathDay || !hDeathMonth)) {
+      try {
+        const computed = await convertGregorianToHebrew(new Date(death_date));
+        hDeathDay = computed.day;
+        hDeathMonth = computed.month;
+        hDeathYear = computed.year;
+      } catch (err) {
+        console.error('Failed to auto-convert death date to Hebrew:', err);
+      }
+    }
+
     const newProfile = await prisma.profile.create({
       data: {
         id: id || randomUUID(),
@@ -324,15 +406,23 @@ export async function createProfile(req: AuthenticatedRequest, res: Response): P
         lastName: last_name,
         avatarUrl: avatar_url,
         birthDate: birth_date ? new Date(birth_date) : null,
+        deathDate: death_date ? new Date(death_date) : null,
         isDeceased: !!is_deceased,
         familyBranchName: family_branch_name,
         email,
         phone,
         location,
         birthYear: birth_year ? parseInt(birth_year, 10) : (birth_date ? new Date(birth_date).getFullYear() : null),
-        deathYear: death_year ? parseInt(death_year, 10) : null,
+        deathYear: death_year ? parseInt(death_year, 10) : (death_date ? new Date(death_date).getFullYear() : null),
         isActive: false,
-        treeId: finalTreeId
+        treeId: finalTreeId,
+        hebrewBirthDay: hBirthDay,
+        hebrewBirthMonth: hBirthMonth,
+        hebrewBirthYear: hBirthYear,
+        hebrewDeathDay: hDeathDay,
+        hebrewDeathMonth: hDeathMonth,
+        hebrewDeathYear: hDeathYear,
+        burialPlace: burial_place || null
       }
     });
 
@@ -369,14 +459,96 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
       last_name, 
       avatar_url, 
       birth_date, 
+      death_date,
       is_deceased, 
       family_branch_name,
       email,
       phone,
       location,
       birth_year,
-      death_year
+      death_year,
+      hebrew_birth_day,
+      hebrew_birth_month,
+      hebrew_birth_year,
+      hebrew_death_day,
+      hebrew_death_month,
+      hebrew_death_year,
+      hebrew_birth_date,
+      hebrew_death_date,
+      burial_place
     } = req.body;
+
+    let hBirthDay = hebrew_birth_day !== undefined ? (hebrew_birth_day ? parseInt(hebrew_birth_day, 10) : null) : undefined;
+    let hBirthMonth = hebrew_birth_month !== undefined ? (hebrew_birth_month ? parseInt(hebrew_birth_month, 10) : null) : undefined;
+    let hBirthYear = hebrew_birth_year !== undefined ? (hebrew_birth_year ? parseInt(hebrew_birth_year, 10) : null) : undefined;
+
+    if (hebrew_birth_date !== undefined) {
+      if (hebrew_birth_date) {
+        const parsed = parseHebrewDateString(hebrew_birth_date);
+        if (parsed) {
+          hBirthDay = parsed.day;
+          hBirthMonth = parsed.month;
+          hBirthYear = parsed.year;
+        }
+      } else {
+        hBirthDay = null;
+        hBirthMonth = null;
+        hBirthYear = null;
+      }
+    } else if (birth_date !== undefined) {
+      if (birth_date) {
+        if (hBirthDay === undefined || hBirthDay === null) {
+          try {
+            const computed = await convertGregorianToHebrew(new Date(birth_date));
+            hBirthDay = computed.day;
+            hBirthMonth = computed.month;
+            hBirthYear = computed.year;
+          } catch (err) {
+            console.error('Failed to auto-convert birth date to Hebrew:', err);
+          }
+        }
+      } else {
+        hBirthDay = null;
+        hBirthMonth = null;
+        hBirthYear = null;
+      }
+    }
+
+    let hDeathDay = hebrew_death_day !== undefined ? (hebrew_death_day ? parseInt(hebrew_death_day, 10) : null) : undefined;
+    let hDeathMonth = hebrew_death_month !== undefined ? (hebrew_death_month ? parseInt(hebrew_death_month, 10) : null) : undefined;
+    let hDeathYear = hebrew_death_year !== undefined ? (hebrew_death_year ? parseInt(hebrew_death_year, 10) : null) : undefined;
+
+    if (hebrew_death_date !== undefined) {
+      if (hebrew_death_date) {
+        const parsed = parseHebrewDateString(hebrew_death_date);
+        if (parsed) {
+          hDeathDay = parsed.day;
+          hDeathMonth = parsed.month;
+          hDeathYear = parsed.year;
+        }
+      } else {
+        hDeathDay = null;
+        hDeathMonth = null;
+        hDeathYear = null;
+      }
+    } else if (death_date !== undefined) {
+      if (death_date) {
+        if (hDeathDay === undefined || hDeathDay === null) {
+          try {
+            const computed = await convertGregorianToHebrew(new Date(death_date));
+            hDeathDay = computed.day;
+            hDeathMonth = computed.month;
+            hDeathYear = computed.year;
+          } catch (err) {
+            console.error('Failed to auto-convert death date to Hebrew:', err);
+          }
+        }
+      } else {
+        hDeathDay = null;
+        hDeathMonth = null;
+        hDeathYear = null;
+      }
+    }
 
     const updatedProfile = await prisma.profile.update({
       where: { id },
@@ -384,14 +556,22 @@ export async function updateProfile(req: AuthenticatedRequest, res: Response): P
         firstName: first_name,
         lastName: last_name,
         avatarUrl: avatar_url,
-        birthDate: birth_date ? new Date(birth_date) : undefined,
+        birthDate: birth_date !== undefined ? (birth_date ? new Date(birth_date) : null) : undefined,
+        deathDate: death_date !== undefined ? (death_date ? new Date(death_date) : null) : undefined,
         isDeceased: is_deceased !== undefined ? !!is_deceased : undefined,
         familyBranchName: family_branch_name,
         email,
         phone,
         location,
-        birthYear: birth_year !== undefined ? parseInt(birth_year, 10) : (birth_date ? new Date(birth_date).getFullYear() : undefined),
-        deathYear: death_year !== undefined ? parseInt(death_year, 10) : undefined
+        birthYear: birth_year !== undefined ? (birth_year ? parseInt(birth_year, 10) : null) : (birth_date ? new Date(birth_date).getFullYear() : undefined),
+        deathYear: death_year !== undefined ? (death_year ? parseInt(death_year, 10) : null) : (death_date ? new Date(death_date).getFullYear() : undefined),
+        hebrewBirthDay: hBirthDay,
+        hebrewBirthMonth: hBirthMonth,
+        hebrewBirthYear: hBirthYear,
+        hebrewDeathDay: hDeathDay,
+        hebrewDeathMonth: hDeathMonth,
+        hebrewDeathYear: hDeathYear,
+        burialPlace: burial_place !== undefined ? burial_place : undefined
       }
     });
 
@@ -501,6 +681,61 @@ export async function deleteRelationship(req: AuthenticatedRequest, res: Respons
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }
+
+export async function deleteProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id } = req.params;
+
+    // Do not allow users to delete themselves
+    if (id === user.id) {
+      res.status(400).json({ error: 'You cannot delete your own profile' });
+      return;
+    }
+
+    // Verify requesting user is connected to the profile they want to delete
+    const connected = await areConnected(user.id, id);
+    if (!connected) {
+      res.status(403).json({ error: 'Forbidden: You do not share a structural family link with this profile' });
+      return;
+    }
+
+    // Get the profile to ensure it is not an active user
+    const profile = await prisma.profile.findUnique({
+      where: { id }
+    });
+
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found' });
+      return;
+    }
+
+    // Check if the profile is active (has registered)
+    if (profile.isActive) {
+      res.status(400).json({ error: 'Cannot delete an active registered family member' });
+      return;
+    }
+
+    // Deleting the profile will automatically delete relationships due to Cascade
+    await prisma.profile.delete({
+      where: { id }
+    });
+
+    // Invalidate circle cache for the requesting user
+    invalidateCircleCache(user.id, id);
+
+    res.json({ message: 'Profile deleted successfully' });
+  } catch (error) {
+    console.error('Error in deleteProfile:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+}
+
 
 export async function connectExistingByEmail(req: AuthenticatedRequest, res: Promise<any> | any): Promise<void> {
   try {
@@ -770,15 +1005,10 @@ export async function getUpcomingBirthdays(req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    const calendarType = (req.query.calendarType as string) || 'gregorian';
     const rawCircle = await getFamilyCircle(user.id);
-    
-    // Filter active profiles with birthDate
-    const activeWithBirthdays = rawCircle.filter(p => p.birthDate && !p.isDeceased);
-
-    if (activeWithBirthdays.length === 0) {
-      res.json([]);
-      return;
-    }
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
     const circleIds = rawCircle.map(p => p.id);
     const relationships = await prisma.relationship.findMany({
@@ -790,43 +1020,143 @@ export async function getUpcomingBirthdays(req: AuthenticatedRequest, res: Respo
     });
 
     const relationsMap = calculateRelationships(user.id, rawCircle, relationships);
+    const events: any[] = [];
 
-    const today = new Date();
-    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    const birthdays = activeWithBirthdays.map(p => {
-      const birthDateObj = new Date(p.birthDate!);
-      const birthMonth = birthDateObj.getMonth();
-      const birthDay = birthDateObj.getDate();
-
-      // Birthday in current year
-      let nextBirthday = new Date(today.getFullYear(), birthMonth, birthDay);
-
-      // If already passed, set to next year
-      if (nextBirthday < todayZero) {
-        nextBirthday.setFullYear(today.getFullYear() + 1);
-      }
-
-      const diffTime = nextBirthday.getTime() - todayZero.getTime();
-      const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      const age = nextBirthday.getFullYear() - birthDateObj.getFullYear();
-
+    for (const p of rawCircle) {
       const relInfo = relationsMap[p.id] || { relation: 'Relative', generation: 'siblings' };
-
       const baseProfile = mapProfileToFrontend(p, relInfo.relation, relInfo.generation);
-      return {
-        ...baseProfile,
-        birthDate: p.birthDate,
-        daysUntil,
-        ageTurning: age,
-        nextBirthdayDate: nextBirthday.toISOString().split('T')[0]
-      };
-    });
+
+      if (!p.isDeceased) {
+        // --- Birthday Event ---
+        let bDay: number | null = p.hebrewBirthDay;
+        let bMonth: number | null = p.hebrewBirthMonth;
+        let bYear: number | null = p.hebrewBirthYear;
+        let hasHebrewBirth = bDay !== null && bMonth !== null;
+
+        if (calendarType === 'hebrew' || hasHebrewBirth) {
+          // If we need Hebrew calculation but it's null, compute it
+          if (!hasHebrewBirth && p.birthDate) {
+            try {
+              const computed = await convertGregorianToHebrew(new Date(p.birthDate));
+              bDay = computed.day;
+              bMonth = computed.month;
+              bYear = computed.year;
+              hasHebrewBirth = true;
+            } catch (err) {
+              console.error('Failed to convert Gregorian birthday to Hebrew for', p.id, err);
+            }
+          }
+        }
+
+        if (calendarType === 'hebrew' && hasHebrewBirth) {
+          // Calculate upcoming birthday using Hebrew calendar
+          try {
+            const ann = await getNextHebrewAnniversary(bDay!, bMonth!, today);
+            const diffTime = ann.nextGregorianDate.getTime() - todayZero.getTime();
+            const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const age = bYear ? (ann.hebrewYear - bYear) : null;
+
+            events.push({
+              ...baseProfile,
+              eventType: 'birthday',
+              daysUntil,
+              ageTurning: age,
+              nextEventDate: ann.nextGregorianDate.toISOString().split('T')[0],
+              formattedDate: formatHebrewDateString(bDay!, bMonth!, undefined, false), // e.g. "י"ח בסיוון"
+              formattedHebrewDate: ann.formattedHebrewDate,
+            });
+          } catch (err) {
+            console.error('Failed to calculate next Hebrew birthday anniversary for', p.id, err);
+          }
+        } else if (p.birthDate) {
+          // Calculate upcoming birthday using Gregorian calendar
+          const birthDateObj = new Date(p.birthDate);
+          let nextBirthday = new Date(today.getFullYear(), birthDateObj.getMonth(), birthDateObj.getDate());
+          if (nextBirthday < todayZero) {
+            nextBirthday.setFullYear(today.getFullYear() + 1);
+          }
+
+          const diffTime = nextBirthday.getTime() - todayZero.getTime();
+          const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const age = nextBirthday.getFullYear() - birthDateObj.getFullYear();
+
+          events.push({
+            ...baseProfile,
+            eventType: 'birthday',
+            daysUntil,
+            ageTurning: age,
+            nextEventDate: nextBirthday.toISOString().split('T')[0],
+            formattedDate: nextBirthday.toLocaleDateString('he-IL', { month: 'long', day: 'numeric' }),
+            formattedHebrewDate: '',
+          });
+        }
+      } else {
+        // --- Memorial Event (Only for deceased and only based on Hebrew calendar) ---
+        let dDay: number | null = p.hebrewDeathDay;
+        let dMonth: number | null = p.hebrewDeathMonth;
+        let dYear: number | null = p.hebrewDeathYear;
+        let hasHebrewDeath = dDay !== null && dMonth !== null;
+
+        if (!hasHebrewDeath && p.deathDate) {
+          try {
+            const computed = await convertGregorianToHebrew(new Date(p.deathDate));
+            dDay = computed.day;
+            dMonth = computed.month;
+            dYear = computed.year;
+            hasHebrewDeath = true;
+          } catch (err) {
+            console.error('Failed to convert Gregorian death date to Hebrew for', p.id, err);
+          }
+        } else if (!hasHebrewDeath && p.deathYear && p.birthDate) {
+          // Fallback if only deathYear is available
+          try {
+            // Assume anniversary on birth date but death year
+            const dummyDate = new Date(p.birthDate);
+            dummyDate.setFullYear(p.deathYear);
+            const computed = await convertGregorianToHebrew(dummyDate);
+            dDay = computed.day;
+            dMonth = computed.month;
+            dYear = computed.year;
+            hasHebrewDeath = true;
+          } catch (err) {
+            console.error('Failed to resolve fallback death date to Hebrew for', p.id, err);
+          }
+        }
+
+        if (hasHebrewDeath) {
+          try {
+            const ann = await getNextHebrewAnniversary(dDay!, dMonth!, today);
+            const diffTime = ann.nextGregorianDate.getTime() - todayZero.getTime();
+            const daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const yearsSince = dYear ? (ann.hebrewYear - dYear) : null;
+
+            let formattedDate = '';
+            if (calendarType === 'hebrew') {
+              formattedDate = formatHebrewDateString(dDay!, dMonth!, undefined, false); // e.g. "י"ח בסיוון"
+            } else {
+              formattedDate = ann.nextGregorianDate.toLocaleDateString('he-IL', { month: 'long', day: 'numeric' });
+            }
+
+            events.push({
+              ...baseProfile,
+              eventType: 'memorial',
+              daysUntil,
+              yearsSince,
+              nextEventDate: ann.nextGregorianDate.toISOString().split('T')[0],
+              formattedDate,
+              formattedHebrewDate: ann.formattedHebrewDate,
+            });
+          } catch (err) {
+            console.error('Failed to calculate next Hebrew memorial anniversary for', p.id, err);
+          }
+        }
+      }
+    }
 
     // Sort by daysUntil ascending
-    birthdays.sort((a, b) => a.daysUntil - b.daysUntil);
+    events.sort((a, b) => a.daysUntil - b.daysUntil);
 
-    res.json(birthdays);
+    res.json(events);
   } catch (error) {
     console.error('Error in getUpcomingBirthdays:', error);
     res.status(500).json({ error: 'Internal Server Error' });
