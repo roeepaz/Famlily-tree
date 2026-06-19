@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Navbar from "@/components/kinship/Navbar";
 import FamilyHub from "@/components/kinship/FamilyHub";
 import TreeExplorer from "@/components/kinship/TreeExplorer";
@@ -7,6 +7,7 @@ import FamilyEvents from "@/components/kinship/FamilyEvents";
 import ProfileDrawer from "@/components/kinship/ProfileDrawer";
 import AddRelativeModal from "@/components/kinship/AddRelativeModal";
 import SparkOnboardingCanvas from "@/components/kinship/SparkOnboardingCanvas";
+import SubtleTopLoadingBar from "@/components/kinship/SubtleTopLoadingBar";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -21,15 +22,35 @@ const views = {
   events: FamilyEvents,
 };
 
+export let persistedActiveTab = "tree";
+let persistedUserId = null;
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState("tree");
+  const { user } = useAuth();
+
+  // Reset to default tab if logged in user changes
+  if (user && persistedUserId && persistedUserId !== user.id) {
+    persistedActiveTab = "tree";
+  }
+  if (user) {
+    persistedUserId = user.id;
+  }
+
+  const [activeTab, setActiveTab] = useState(persistedActiveTab);
+
+  useEffect(() => {
+    persistedActiveTab = activeTab;
+  }, [activeTab]);
+
   const [isMyProfileOpen, setIsMyProfileOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addModalAnchorId, setAddModalAnchorId] = useState(null);
   const [showSparkOnboarding, setShowSparkOnboarding] = useState(false);
-  const [isCheckingCircle, setIsCheckingCircle] = useState(true);
+  const [isCheckingCircle, setIsCheckingCircle] = useState(() => {
+    return sessionStorage.getItem("just_logged_in") === "true";
+  });
   const [loadingText, setLoadingText] = useState("Gathering family members...");
-  const { user } = useAuth();
+  const lastUserIdRef = useRef(null);
 
   const { data: familyCircle = [], isLoading: isLoadingCircle } = useQuery({
     queryKey: ["familyCircle"],
@@ -37,7 +58,7 @@ export default function Home() {
     enabled: !!user,
   });
 
-  const showLoader = isCheckingCircle || isLoadingCircle;
+  const showLoader = isCheckingCircle;
 
   // Cycle through loading messages for a premium feel
   useEffect(() => {
@@ -56,14 +77,23 @@ export default function Home() {
     return () => clearInterval(textInterval);
   }, [showLoader]);
 
-  // Introduce a minimum 2-second delay to prevent sudden layout shifts
+  // Introduce a minimum 2-second delay to prevent sudden layout shifts (only for active logins)
   useEffect(() => {
     if (!user) return;
-    setIsCheckingCircle(true);
-    const timer = setTimeout(() => {
+    if (lastUserIdRef.current === user.id) return;
+    lastUserIdRef.current = user.id;
+
+    const justLoggedIn = sessionStorage.getItem("just_logged_in") === "true";
+    if (justLoggedIn) {
+      setIsCheckingCircle(true);
+      const timer = setTimeout(() => {
+        setIsCheckingCircle(false);
+        sessionStorage.removeItem("just_logged_in");
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
       setIsCheckingCircle(false);
-    }, 2000);
-    return () => clearTimeout(timer);
+    }
   }, [user]);
 
   // Open the onboarding wizard only after data is fully loaded and user is confirmed to be alone
@@ -156,6 +186,7 @@ export default function Home() {
           transition={{ duration: 0.4 }}
           className="min-h-screen bg-background pb-20 sm:pb-0"
         >
+          <SubtleTopLoadingBar />
           <Navbar 
             activeTab={activeTab} 
             onTabChange={setActiveTab} 

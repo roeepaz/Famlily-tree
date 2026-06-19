@@ -74,6 +74,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
           email: m.email || "",
           phone: m.phone || "",
           isActive: m.isActive,
+          isDeceased: m.isDeceased || false,
         }));
       setLocalNodes(initialNodes);
     }
@@ -183,6 +184,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
             email: targetEmail || "",
             phone: targetPhone || "",
             isActive: false,
+            isDeceased: false,
           },
         ]);
       } else {
@@ -228,6 +230,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
             email: targetEmail || "",
             phone: targetPhone || "",
             isActive: false,
+            isDeceased: false,
           },
         ]);
       }
@@ -832,68 +835,72 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
 
             {/* List of Mapped relatives */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-1 py-1">
-              {localNodes.map((rel) => {
-                const baseInviteUrl = `${window.location.origin}/register?inviteId=${rel.id}`;
-                const inviteUrl = rel.email
-                  ? `${baseInviteUrl}&email=${encodeURIComponent(rel.email)}`
-                  : rel.phone
-                    ? `${baseInviteUrl}&phone=${encodeURIComponent(rel.phone)}`
-                    : baseInviteUrl;
-                const shareText = `Hey ${rel.name.split(" ")[0]}! I started our private family tree on Kinship. Come claim your profile and see who is already here: ${inviteUrl}`;
-                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+              {(() => {
+                const inviteableNodes = localNodes.filter((rel) => !rel.isDeceased);
+                if (inviteableNodes.length === 0) {
+                  return (
+                    <div className="text-center py-6 text-slate-500 text-xs">
+                      No relatives added to generate share links. Add parent, spouse, or child first.
+                    </div>
+                  );
+                }
+                return inviteableNodes.map((rel) => {
+                  const baseInviteUrl = `${window.location.origin}/register?inviteId=${rel.id}`;
+                  const inviteUrl = rel.email
+                    ? `${baseInviteUrl}&email=${encodeURIComponent(rel.email)}`
+                    : rel.phone
+                      ? `${baseInviteUrl}&phone=${encodeURIComponent(rel.phone)}`
+                      : baseInviteUrl;
+                  const shareText = `Hey ${rel.name.split(" ")[0]}! I started our private family tree on Kinship. Come claim your profile and see who is already here: ${inviteUrl}`;
+                  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
-                return (
-                  <div key={rel.id} className="flex items-center justify-between p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-2xl gap-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-9 h-9 ring-1 ring-slate-800">
-                        <AvatarFallback className="bg-slate-800 text-teal-400 text-xs font-semibold">{rel.name[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="text-left">
-                        <p className="text-xs font-bold text-slate-200">{rel.name}</p>
-                        <p className="text-[9px] text-slate-400">
-                          {rel.relation} • {rel.email ? rel.email : rel.phone ? rel.phone : "No email or phone added"}
-                        </p>
+                  return (
+                    <div key={rel.id} className="flex items-center justify-between p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-2xl gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-9 h-9 ring-1 ring-slate-800">
+                          <AvatarFallback className="bg-slate-800 text-teal-400 text-xs font-semibold">{rel.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="text-left">
+                          <p className="text-xs font-bold text-slate-200">{rel.name}</p>
+                          <p className="text-[9px] text-slate-400">
+                            {rel.relation} • {rel.email ? rel.email : rel.phone ? rel.phone : "No email or phone added"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Copy Link Button */}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            navigator.clipboard.writeText(inviteUrl);
+                            toast({
+                              title: "Link copied! 📋",
+                              description: `Copied invite link for ${rel.name}.`,
+                            });
+                          }}
+                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+                          title="Copy Invitation Link"
+                        >
+                          <Clipboard className="w-3.5 h-3.5" />
+                        </Button>
+
+                        {/* Share to WhatsApp Button */}
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-900/60 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800 hover:text-emerald-200 transition-colors"
+                          title="Share via WhatsApp"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </a>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {/* Copy Link Button */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => {
-                          navigator.clipboard.writeText(inviteUrl);
-                          toast({
-                            title: "Link copied! 📋",
-                            description: `Copied invite link for ${rel.name}.`,
-                          });
-                        }}
-                        className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
-                        title="Copy Invitation Link"
-                      >
-                        <Clipboard className="w-3.5 h-3.5" />
-                      </Button>
-
-                      {/* Share to WhatsApp Button */}
-                      <a
-                        href={whatsappUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-900/60 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800 hover:text-emerald-200 transition-colors"
-                        title="Share via WhatsApp"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {localNodes.length === 0 && (
-                <div className="text-center py-6 text-slate-500 text-xs">
-                  No relatives added to generate share links. Add parent, spouse, or child first.
-                </div>
-              )}
+                  );
+                });
+              })()}
             </div>
 
             <div className="pt-4 mt-2 border-t border-slate-800 flex gap-2">

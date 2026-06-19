@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
+import { Loader2, Camera, X } from "lucide-react";
+import { compressImage } from "@/lib/imageCompressor";
 
 function getHebrewYearGematria(year) {
   const thousands = Math.floor(year / 1000);
@@ -108,8 +109,10 @@ export default function ManualConnectionForm({
     family_branch_name: "",
     anchor_id: "",
     relationship_type: "CHILD",
+    avatar_url: "",
   });
 
+  const [avatarPreview, setAvatarPreview] = useState(null);
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
@@ -138,7 +141,9 @@ export default function ManualConnectionForm({
       family_branch_name: defaultBranch,
       anchor_id: preselectedAnchorId || user?.id || "",
       relationship_type: "CHILD",
+      avatar_url: "",
     });
+    setAvatarPreview(null);
     setErrors({});
   }, [preselectedAnchorId, familyCircle, user]);
 
@@ -180,6 +185,30 @@ export default function ManualConnectionForm({
       ...prev,
       is_deceased: checked,
     }));
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors((prev) => ({ ...prev, avatar: "אנא בחר תמונה קטנה מ-10MB" }));
+        return;
+      }
+      setErrors((prev) => ({ ...prev, avatar: "" }));
+      try {
+        const compressed = await compressImage(file, { maxWidth: 512, maxHeight: 512, quality: 0.6 });
+        setAvatarPreview(compressed);
+        setFormData((prev) => ({ ...prev, avatar_url: compressed }));
+      } catch (err) {
+        setErrors((prev) => ({ ...prev, avatar: "נכשל כיווץ התמונה" }));
+      }
+    }
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarPreview(null);
+    setFormData((prev) => ({ ...prev, avatar_url: "" }));
+    setErrors((prev) => ({ ...prev, avatar: "" }));
   };
 
   const validate = () => {
@@ -226,6 +255,40 @@ export default function ManualConnectionForm({
       {/* Section: Personal Info */}
       <div className="space-y-3">
         <h4 className="text-xs font-semibold text-primary uppercase tracking-wider">פרטים אישיים</h4>
+
+        {/* Profile Photo Selector */}
+        <div className="flex flex-col items-center justify-center pb-3">
+          <div className="relative group">
+            <div className="w-20 h-20 rounded-full border-2 border-dashed border-border group-hover:border-primary overflow-hidden flex items-center justify-center bg-secondary/50 hover:bg-secondary/80 transition-all duration-200 relative shadow-inner animate-in zoom-in-75 duration-300">
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="תצוגה מקדימה" className="w-full h-full object-cover" />
+              ) : (
+                <div className="text-center p-2 flex flex-col items-center justify-center">
+                  <Camera className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                  <span className="text-[10px] font-bold text-muted-foreground group-hover:text-primary transition-colors mt-1">תמונה</span>
+                </div>
+              )}
+              <input
+                type="file"
+                id="avatar-upload"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+            </div>
+            {avatarPreview && (
+              <button
+                type="button"
+                onClick={handleRemoveAvatar}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground p-1 rounded-full hover:bg-destructive/90 transition-colors shadow-md border border-background"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2">העלאת תמונת פרופיל (אופציונלי)</p>
+          {errors.avatar && <p className="text-[10px] text-destructive mt-1">{errors.avatar}</p>}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">

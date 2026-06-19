@@ -7,7 +7,8 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import CompleteProfileOnboarding from '@/components/CompleteProfileOnboarding';
 import AppLoader from '@/components/AppLoader';
-import Home from './pages/Home';
+import { AppSkeletonShell } from '@/components/kinship/SkeletonLoaders';
+import Home, { persistedActiveTab } from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
@@ -19,6 +20,10 @@ const AuthenticatedApp = () => {
 
   // Show cinematic splash loader while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
+    const hasToken = localStorage.getItem('supabase_access_token');
+    if (hasToken) {
+      return <AppSkeletonShell activeTab={persistedActiveTab} />;
+    }
     return <AppLoader />;
   }
 
