@@ -40,6 +40,7 @@ export default function AddRelativeModal({ isOpen, onClose, preselectedAnchorId 
         hebrew_death_date: data.is_deceased && data.hebrew_death_date ? data.hebrew_death_date : null,
         burial_place: data.is_deceased && data.burial_place ? data.burial_place.trim() : null,
         family_branch_name: data.family_branch_name.trim() || null,
+        avatar_url: data.avatar_url || null,
       };
 
       const newProfile = await api.createProfile(profileData);

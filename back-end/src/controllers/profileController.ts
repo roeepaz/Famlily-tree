@@ -771,6 +771,11 @@ export async function connectExistingByEmail(req: AuthenticatedRequest, res: Pro
         return;
       }
 
+      if (targetProfile.isDeceased) {
+        res.status(400).json({ error: 'Cannot connect to a profile marked as deceased.' });
+        return;
+      }
+
       // Check if relationship already exists
       const existingRel = await prisma.relationship.findFirst({
         where: {
@@ -1341,6 +1346,11 @@ export async function getInvitePreview(req: Request, res: Response): Promise<voi
       return;
     }
 
+    if (placeholder.isDeceased) {
+      res.status(400).json({ error: 'Cannot retrieve invitation preview for a deceased family member' });
+      return;
+    }
+
     // 2. Fetch all profiles in the same tree
     if (!placeholder.treeId) {
       res.status(400).json({ error: 'Placeholder is not associated with a family tree' });
@@ -1439,6 +1449,11 @@ export async function claimInvite(req: AuthenticatedRequest, res: Response): Pro
 
     if (!placeholder) {
       res.status(404).json({ error: 'Invitation placeholder profile not found' });
+      return;
+    }
+
+    if (placeholder.isDeceased) {
+      res.status(400).json({ error: 'Cannot claim invitation for a deceased family member' });
       return;
     }
 
