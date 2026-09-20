@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { X, MapPin, Mail, Phone, Calendar, Clock, ArrowRight, Plus, Camera, History, UserPlus } from "lucide-react";
+import { X, MapPin, Mail, Phone, Calendar, Clock, ArrowRight, Plus, Camera, History, UserPlus, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,39 @@ const getActivityIcon = (type) => {
   }
 };
 
-export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }) {
+const GEMATRIA_DAYS = {
+  1: "א'", 2: "ב'", 3: "ג'", 4: "ד'", 5: "ה'", 6: "ו'", 7: "ז'", 8: "ח'", 9: "ט'", 10: "י'",
+  11: "י\"א", 12: "י\"ב", 13: "י\"ג", 14: "י\"ד", 15: "ט\"ו", 16: "ט\"ז", 17: "י\"ז", 18: "י\"ח", 19: "י\"ט", 20: "כ'",
+  21: "כ\"א", 22: "כ\"ב", 23: "כ\"ג", 24: "כ\"ד", 25: "כ\"ה", 26: "כ\"ו", 27: "כ\"ז", 28: "כ\"ח", 29: "כ\"ט", 30: "ל'"
+};
+
+const HEBREW_MONTHS = {
+  1: "ניסן", 2: "אייר", 3: "סיוון", 4: "תמוז", 5: "אב", 6: "אלול",
+  7: "תשרי", 8: "חשוון", 9: "כסלו", 10: "טבת", 11: "שבט", 12: "אדר", 13: "אדר ב'"
+};
+
+function formatHebrewDate(day, month, year) {
+  if (!day || !month) return "";
+  const dayStr = GEMATRIA_DAYS[day] || day.toString();
+  const monthStr = HEBREW_MONTHS[month] || "";
+  let yearStr = "";
+  if (year) {
+    if (year === 5786) yearStr = "ה'תשפ\"ו";
+    else if (year === 5785) yearStr = "ה'תשפ\"ה";
+    else if (year === 5784) yearStr = "ה'תשפ\"ד";
+    else yearStr = `ה'${year}`;
+  }
+  return `${dayStr} ב${monthStr}${yearStr ? ' ' + yearStr : ''}`;
+}
+
+export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative, isEditMode }) {
   const { user, checkUserAuth } = useAuth();
   const queryClient = useQueryClient();
   const [isEditingPhoto, setIsEditingPhoto] = useState(false);
   const [photoUrlInput, setPhotoUrlInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [navPlace, setNavPlace] = useState(null);
   const fileInputRef = useRef(null);
 
   const { data: activities = [], isLoading: isLoadingActivity } = useQuery({
@@ -57,6 +84,36 @@ export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }
   const isCurrentUser = user && member && user.id === member.id;
   const displayName = isCurrentUser ? user.name : (member ? member.name : "");
   const displayAvatar = isCurrentUser ? user.avatar : (member ? member.avatar : "");
+  const hBirth = member ? (member.hebrewBirthDate || formatHebrewDate(member.hebrewBirthDay, member.hebrewBirthMonth, member.hebrewBirthYear)) : "";
+  const hDeath = member ? (member.hebrewDeathDate || formatHebrewDate(member.hebrewDeathDay, member.hebrewDeathMonth, member.hebrewDeathYear)) : "";
+
+  const handleDeleteProfile = async () => {
+    if (!member) return;
+    
+    const confirmMessage = `האם אתה בטוח שברצונך למחוק את ${displayName} מעץ המשפחה?`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await api.deleteProfile(member.id);
+      queryClient.invalidateQueries({ queryKey: ["familyCircle"] });
+      toast({
+        title: "הוסר בהצלחה! 🗑️",
+        description: `הסרת את ${displayName} מעץ המשפחה.`,
+      });
+      onClose();
+    } catch (err) {
+      toast({
+        title: "שגיאה בהסרת אדם",
+        description: err.message || "משהו השתבש.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
@@ -298,8 +355,37 @@ export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }
                     <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
                     </div>
-                    Born {member.birthYear}
-                    {member.isDeceased && ` · Passed ${member.deathYear}`}
+                    <span>
+                      Born {member.birthYear}
+                      {member.isDeceased && member.deathYear && ` · Passed ${member.deathYear}`}
+                    </span>
+                  </div>
+                )}
+                {(hBirth || hDeath) && (
+                  <div className="flex items-start gap-3 text-sm text-foreground/80 animate-in fade-in duration-200">
+                    <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                      <span className="text-xs">✡️</span>
+                    </div>
+                    <div className="space-y-0.5 text-right flex-1" dir="rtl">
+                      {hBirth && <p className="text-xs"><span className="text-muted-foreground">תאריך לידה עברי:</span> {hBirth}</p>}
+                      {hDeath && <p className="text-xs"><span className="text-muted-foreground">תאריך פטירה עברי:</span> {hDeath}</p>}
+                    </div>
+                  </div>
+                )}
+                {member.isDeceased && member.burialPlace && (
+                  <div className="flex items-start gap-3 text-sm text-foreground/80 animate-in fade-in duration-200">
+                    <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
+                      <span className="text-xs">🪦</span>
+                    </div>
+                    <div className="space-y-1 text-right flex-1" dir="rtl">
+                      <p className="text-xs leading-normal"><span className="text-muted-foreground">מקום קבורה:</span> {member.burialPlace}</p>
+                      <button
+                        onClick={() => setNavPlace(member.burialPlace)}
+                        className="text-[10px] text-primary hover:underline flex items-center justify-start gap-1 mt-0.5"
+                      >
+                        <span>🧭 נווט לבית העלמין</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -341,9 +427,59 @@ export default function ProfileDrawer({ member, isOpen, onClose, onAddRelative }
                   View Full Memory Timeline
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
+
+                {isEditMode && !isCurrentUser && !member.isActive && (
+                  <Button
+                    onClick={handleDeleteProfile}
+                    disabled={isDeleting}
+                    className="w-full rounded-xl bg-rose-950/20 hover:bg-rose-900 border border-rose-800/50 text-rose-400 hover:text-rose-200 mt-2 transition-all flex items-center justify-center gap-2"
+                  >
+                    {isDeleting ? "מוחק..." : (
+                      <>
+                        <Trash2 className="w-4 h-4 text-rose-500" />
+                        הסר מעץ המשפחה
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </motion.div>
+
+          {/* Navigation Engine Chooser Modal */}
+          {navPlace && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+              <div className="bg-card border border-border p-6 rounded-2xl shadow-xl max-w-xs w-full space-y-4 animate-in fade-in zoom-in duration-200 text-right" dir="rtl">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <h4 className="font-heading text-sm font-bold text-foreground">בחר אפליקציית ניווט</h4>
+                  <button onClick={() => setNavPlace(null)} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                </div>
+                <p className="text-xs text-muted-foreground">ניווט אל: <span className="font-medium text-foreground block mt-1">{navPlace}</span></p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      window.open(`https://waze.com/ul?q=${encodeURIComponent(navPlace)}&navigate=yes`, '_blank');
+                      setNavPlace(null);
+                    }}
+                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-secondary/50 hover:bg-secondary transition-all gap-1.5"
+                  >
+                    <span className="text-2xl">🚙</span>
+                    <span className="text-xs font-semibold">Waze</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navPlace)}`, '_blank');
+                      setNavPlace(null);
+                    }}
+                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-secondary/50 hover:bg-secondary transition-all gap-1.5"
+                  >
+                    <span className="text-2xl">🗺️</span>
+                    <span className="text-xs font-semibold">Google Maps</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </AnimatePresence>

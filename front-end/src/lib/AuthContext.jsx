@@ -23,7 +23,9 @@ export const AuthProvider = ({ children }) => {
   });
 
   const checkUserAuth = async () => {
-    setIsLoadingAuth(true);
+    if (!authChecked) {
+      setIsLoadingAuth(true);
+    }
     try {
       let profile = await api.getMe();
 
@@ -50,7 +52,7 @@ export const AuthProvider = ({ children }) => {
         profile.name.toLowerCase() === 'first name last name' || 
         profile.name.toLowerCase().startsWith('first name')
       );
-      if (!profile.birthYear || !profile.phone || isDefaultName) {
+      if (!profile.birthYear || isDefaultName) {
         setIsProfileIncomplete(true);
       } else {
         setIsProfileIncomplete(false);
@@ -131,6 +133,7 @@ export const AuthProvider = ({ children }) => {
     if (error) {
       throw error;
     }
+    sessionStorage.setItem('just_logged_in', 'true');
     return data;
   };
 
@@ -144,6 +147,7 @@ export const AuthProvider = ({ children }) => {
     if (error) {
       throw error;
     }
+    sessionStorage.setItem('just_logged_in', 'true');
     return data;
   };
   
@@ -152,6 +156,7 @@ export const AuthProvider = ({ children }) => {
     if (inviteId) {
       localStorage.setItem('pending_invite_id', inviteId);
     }
+    sessionStorage.setItem('just_logged_in', 'true');
     const { data, error } = await supabaseClient.auth.signInWithOAuth({
       provider: 'google',
       options: {

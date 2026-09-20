@@ -3,7 +3,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, ArrowDown, ArrowLeftRight, Check, X, Clipboard, Send, Loader2, TreePine, CalendarDays, Archive } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowLeftRight, Check, X, Clipboard, Send, Loader2, TreePine, CalendarDays, Archive, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,10 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
   const [editingAxis, setEditingAxis] = useState(null); // 'UP' | 'SIDE' | 'DOWN'
   const [subType, setSubType] = useState(null); // 'SPOUSE' | 'SIBLING' for SIDE axis
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteNodeId, setDeleteNodeId] = useState(null);
+  const [deleteNodeName, setDeleteNodeName] = useState(null);
+  const [deleteNodeRelation, setDeleteNodeRelation] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form inputs
   const [firstName, setFirstName] = useState("");
@@ -70,6 +74,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
           email: m.email || "",
           phone: m.phone || "",
           isActive: m.isActive,
+          isDeceased: m.isDeceased || false,
         }));
       setLocalNodes(initialNodes);
     }
@@ -179,6 +184,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
             email: targetEmail || "",
             phone: targetPhone || "",
             isActive: false,
+            isDeceased: false,
           },
         ]);
       } else {
@@ -224,6 +230,7 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
             email: targetEmail || "",
             phone: targetPhone || "",
             isActive: false,
+            isDeceased: false,
           },
         ]);
       }
@@ -248,6 +255,38 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeletePerson = (personId, name, relation) => {
+    setDeleteNodeId(personId);
+    setDeleteNodeName(name);
+    setDeleteNodeRelation(relation);
+  };
+
+  const confirmDeletePerson = async () => {
+    if (!deleteNodeId) return;
+    setIsDeleting(true);
+    try {
+      await api.deleteProfile(deleteNodeId);
+      setLocalNodes((prev) => prev.filter((n) => n.id !== deleteNodeId));
+      queryClient.invalidateQueries({ queryKey: ["familyCircle"] });
+      toast({
+        title: "הוסר בהצלחה! 🗑️",
+        description: `הסרת את ${deleteNodeName} מעץ המשפחה.`,
+      });
+      setDeleteNodeId(null);
+      setDeleteNodeName(null);
+      setDeleteNodeRelation(null);
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "שגיאה בהסרת אדם",
+        description: err.message || "משהו השתבש.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -295,8 +334,19 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
                     key={p.id}
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center"
+                    className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center relative group"
                   >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePerson(p.id, p.name, p.relation);
+                      }}
+                      className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md z-10"
+                      title="מחק"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                     <Avatar className="w-10 h-10 ring-1 ring-slate-700">
                       <AvatarFallback className="bg-slate-700 text-teal-400 text-sm font-semibold">{p.name[0]}</AvatarFallback>
                     </Avatar>
@@ -419,8 +469,19 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
                   key={s.id}
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center"
+                  className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center relative group"
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeletePerson(s.id, s.name, s.relation);
+                    }}
+                    className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md z-10"
+                    title="מחק"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                   <Avatar className="w-10 h-10 ring-1 ring-slate-700">
                     <AvatarFallback className="bg-slate-700 text-teal-400 text-sm font-semibold">{s.name[0]}</AvatarFallback>
                   </Avatar>
@@ -569,8 +630,19 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
                   key={sp.id}
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center"
+                  className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center relative group"
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeletePerson(sp.id, sp.name, sp.relation);
+                    }}
+                    className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md z-10"
+                    title="מחק"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
                   <Avatar className="w-10 h-10 ring-1 ring-slate-700">
                     <AvatarFallback className="bg-slate-700 text-teal-400 text-sm font-semibold">{sp.name[0]}</AvatarFallback>
                   </Avatar>
@@ -596,8 +668,19 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
                     key={c.id}
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center"
+                    className="flex flex-col items-center p-3 rounded-2xl bg-slate-800/80 border border-slate-700 w-28 text-center relative group"
                   >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePerson(c.id, c.name, c.relation);
+                      }}
+                      className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 shadow-md z-10"
+                      title="מחק"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                     <Avatar className="w-10 h-10 ring-1 ring-slate-700">
                       <AvatarFallback className="bg-slate-700 text-teal-400 text-sm font-semibold">{c.name[0]}</AvatarFallback>
                     </Avatar>
@@ -752,68 +835,72 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
 
             {/* List of Mapped relatives */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-1 py-1">
-              {localNodes.map((rel) => {
-                const baseInviteUrl = `${window.location.origin}/register?inviteId=${rel.id}`;
-                const inviteUrl = rel.email
-                  ? `${baseInviteUrl}&email=${encodeURIComponent(rel.email)}`
-                  : rel.phone
-                    ? `${baseInviteUrl}&phone=${encodeURIComponent(rel.phone)}`
-                    : baseInviteUrl;
-                const shareText = `Hey ${rel.name.split(" ")[0]}! I started our private family tree on Kinship. Come claim your profile and see who is already here: ${inviteUrl}`;
-                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+              {(() => {
+                const inviteableNodes = localNodes.filter((rel) => !rel.isDeceased);
+                if (inviteableNodes.length === 0) {
+                  return (
+                    <div className="text-center py-6 text-slate-500 text-xs">
+                      No relatives added to generate share links. Add parent, spouse, or child first.
+                    </div>
+                  );
+                }
+                return inviteableNodes.map((rel) => {
+                  const baseInviteUrl = `${window.location.origin}/register?inviteId=${rel.id}`;
+                  const inviteUrl = rel.email
+                    ? `${baseInviteUrl}&email=${encodeURIComponent(rel.email)}`
+                    : rel.phone
+                      ? `${baseInviteUrl}&phone=${encodeURIComponent(rel.phone)}`
+                      : baseInviteUrl;
+                  const shareText = `Hey ${rel.name.split(" ")[0]}! I started our private family tree on Kinship. Come claim your profile and see who is already here: ${inviteUrl}`;
+                  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
-                return (
-                  <div key={rel.id} className="flex items-center justify-between p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-2xl gap-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-9 h-9 ring-1 ring-slate-800">
-                        <AvatarFallback className="bg-slate-800 text-teal-400 text-xs font-semibold">{rel.name[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="text-left">
-                        <p className="text-xs font-bold text-slate-200">{rel.name}</p>
-                        <p className="text-[9px] text-slate-400">
-                          {rel.relation} • {rel.email ? rel.email : rel.phone ? rel.phone : "No email or phone added"}
-                        </p>
+                  return (
+                    <div key={rel.id} className="flex items-center justify-between p-3.5 bg-slate-950/60 border border-slate-800/80 rounded-2xl gap-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="w-9 h-9 ring-1 ring-slate-800">
+                          <AvatarFallback className="bg-slate-800 text-teal-400 text-xs font-semibold">{rel.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="text-left">
+                          <p className="text-xs font-bold text-slate-200">{rel.name}</p>
+                          <p className="text-[9px] text-slate-400">
+                            {rel.relation} • {rel.email ? rel.email : rel.phone ? rel.phone : "No email or phone added"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Copy Link Button */}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            navigator.clipboard.writeText(inviteUrl);
+                            toast({
+                              title: "Link copied! 📋",
+                              description: `Copied invite link for ${rel.name}.`,
+                            });
+                          }}
+                          className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+                          title="Copy Invitation Link"
+                        >
+                          <Clipboard className="w-3.5 h-3.5" />
+                        </Button>
+
+                        {/* Share to WhatsApp Button */}
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-900/60 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800 hover:text-emerald-200 transition-colors"
+                          title="Share via WhatsApp"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </a>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {/* Copy Link Button */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => {
-                          navigator.clipboard.writeText(inviteUrl);
-                          toast({
-                            title: "Link copied! 📋",
-                            description: `Copied invite link for ${rel.name}.`,
-                          });
-                        }}
-                        className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
-                        title="Copy Invitation Link"
-                      >
-                        <Clipboard className="w-3.5 h-3.5" />
-                      </Button>
-
-                      {/* Share to WhatsApp Button */}
-                      <a
-                        href={whatsappUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-900/60 border border-emerald-800/50 text-emerald-400 hover:bg-emerald-800 hover:text-emerald-200 transition-colors"
-                        title="Share via WhatsApp"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {localNodes.length === 0 && (
-                <div className="text-center py-6 text-slate-500 text-xs">
-                  No relatives added to generate share links. Add parent, spouse, or child first.
-                </div>
-              )}
+                  );
+                });
+              })()}
             </div>
 
             <div className="pt-4 mt-2 border-t border-slate-800 flex gap-2">
@@ -835,6 +922,45 @@ export default function SparkOnboardingCanvas({ familyCircle }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      {deleteNodeId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl text-center space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto mb-2">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <h4 className="text-base font-bold text-slate-100">מחיקת אדם מהעץ</h4>
+            <div className="text-xs text-slate-400 leading-relaxed space-y-2">
+              <p>
+                האם אתה בטוח שברצונך למחוק את <span className="font-semibold text-slate-200">{deleteNodeName}</span> מהעץ?
+              </p>
+              {deleteNodeRelation === "Parent" && (
+                <p className="text-amber-500 font-medium">
+                  ⚠️ שים לב: מחיקת הורה תנתק גם את כל הקשרים המשפחתיים שלו.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button 
+                variant="ghost" 
+                onClick={() => { setDeleteNodeId(null); setDeleteNodeName(null); setDeleteNodeRelation(null); }}
+                disabled={isDeleting}
+                className="flex-1 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+              >
+                ביטול
+              </Button>
+              <Button 
+                onClick={confirmDeletePerson}
+                disabled={isDeleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-800 text-white font-semibold shadow-lg shadow-rose-600/10"
+              >
+                {isDeleting ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : "מחק"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
